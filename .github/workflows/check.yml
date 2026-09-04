@@ -16,7 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Pinned, not resolved from `devEngines.packageManager`: a newer pnpm
+      # rewrites the lockfile, which `--frozen-lockfile` then refuses.
       - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.1 # keep in step with `packageManager`
 
       - uses: actions/setup-node@v7
         with:
@@ -48,7 +52,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Pinned, not resolved from `devEngines.packageManager`: a newer pnpm
+      # rewrites the lockfile, which `--frozen-lockfile` then refuses.
       - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.1 # keep in step with `packageManager`
 
       - uses: actions/setup-node@v7
         with:
