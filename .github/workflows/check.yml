@@ -14,11 +14,11 @@ jobs:
     name: check (node 22)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -29,7 +29,7 @@ jobs:
       # tests, then the dist smoke tests.
       - run: pnpm run check
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist
@@ -46,11 +46,11 @@ jobs:
         # oldest, and the one the dev toolchain cannot run on.
         node-version: [18, 20, 22, 24]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
@@ -59,7 +59,7 @@ jobs:
       # Node 20 or newer, so installing them here would defeat the point.
       - run: pnpm install --prod --frozen-lockfile --ignore-scripts
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist
