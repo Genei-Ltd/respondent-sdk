@@ -72,9 +72,11 @@ version fails to resolve, this is why. Do not work around it.
   - Every wrapper operation takes an optional trailing
     `options?: RespondentRequestOptions` and spreads `requestControls(options)`
     into the generated call, so callers can pass an `AbortSignal`.
-  - Add a row to `tests/respondentSdkOperations.test.ts` for each new operation.
-    That test fails unless the table covers every non-deprecated route in the
-    spec exactly once.
+  - Add a row to `cases` in `tests/respondentSdkOperations.test.ts` for each new
+    operation. That test fails unless the table covers every non-deprecated
+    route in the spec exactly once, so a convenience delegate — one that
+    forwards to an operation already in `cases` — goes in `delegateCases`
+    instead. A new module needs a row in `signalCases` too.
   - Adjust method signatures to mirror schema updates (new required properties,
     renamed path params).
   - Copy endpoint docstrings from `src/generated/sdk.gen.ts` into the wrapper

@@ -771,6 +771,118 @@ const cases: OperationCase[] = [
   },
 ]
 
+/**
+ * The public delegates on `respondent.messaging`. They forward to
+ * `messaging.conversations.*` and `messaging.messages.*`, so their routes are
+ * already claimed in `cases`; they live in their own table to keep the
+ * "every route exactly once" assertion endpoint-based.
+ */
+const delegateCases: OperationCase[] = [
+  {
+    name: 'messaging.listConversations',
+    method: 'GET',
+    template: '/v1/messaging/conversations',
+    run: (sdk) => sdk.messaging.listConversations(),
+  },
+  {
+    name: 'messaging.createConversation',
+    method: 'POST',
+    template: '/v1/messaging/conversations',
+    body: { projectId: PROJECT_ID, participantUserIds: [PARTICIPANT_USER_ID] },
+    run: (sdk) =>
+      sdk.messaging.createConversation({
+        projectId: PROJECT_ID,
+        participantUserIds: [PARTICIPANT_USER_ID],
+      }),
+  },
+  {
+    name: 'messaging.listMessages',
+    method: 'GET',
+    template: '/v1/messaging/messages',
+    run: (sdk) => sdk.messaging.listMessages(),
+  },
+  {
+    name: 'messaging.createMessage',
+    method: 'POST',
+    template: '/v1/messaging/conversations/{conversationUid}/messages',
+    params: [CONVERSATION_UID],
+    body: { body: 'Hello' },
+    run: (sdk) =>
+      sdk.messaging.createMessage(CONVERSATION_UID, { body: 'Hello' }),
+  },
+  {
+    name: 'messaging.inbox',
+    method: 'GET',
+    template: '/v1/messaging/messages/inbox',
+    run: (sdk) => sdk.messaging.inbox(),
+  },
+]
+
+type SignalCase = {
+  /** `module.method`, used as the test name. */
+  name: string
+  run: (sdk: RespondentSdk, signal: AbortSignal) => Promise<unknown>
+}
+
+/**
+ * One method per module, plus one messaging delegate: every wrapper operation
+ * spreads the same `requestControls(options)`, so one row per group is enough
+ * to catch a module that forgot the trailing options argument.
+ */
+const signalCases: SignalCase[] = [
+  {
+    name: 'projects.list',
+    run: (sdk, signal) => sdk.projects.list(undefined, { signal }),
+  },
+  {
+    name: 'screenerQuestions.list',
+    run: (sdk, signal) => sdk.screenerQuestions.list(PROJECT_ID, { signal }),
+  },
+  {
+    name: 'screenerResponses.list',
+    run: (sdk, signal) =>
+      sdk.screenerResponses.list(PROJECT_ID, undefined, { signal }),
+  },
+  {
+    name: 'quota.retrieve',
+    run: (sdk, signal) => sdk.quota.retrieve(PROJECT_ID, { signal }),
+  },
+  {
+    name: 'webhooks.list',
+    run: (sdk, signal) => sdk.webhooks.list({ signal }),
+  },
+  {
+    name: 'pricing.balanceSummary',
+    run: (sdk, signal) => sdk.pricing.balanceSummary({ signal }),
+  },
+  {
+    name: 'profiles.retrieve',
+    run: (sdk, signal) => sdk.profiles.retrieve(PROFILE_ID, { signal }),
+  },
+  {
+    name: 'teamRespondents.list',
+    run: (sdk, signal) => sdk.teamRespondents.list(undefined, { signal }),
+  },
+  {
+    name: 'messaging.conversations.list',
+    run: (sdk, signal) =>
+      sdk.messaging.conversations.list(undefined, { signal }),
+  },
+  {
+    name: 'messaging.messages.list',
+    run: (sdk, signal) => sdk.messaging.messages.list(undefined, { signal }),
+  },
+  {
+    name: 'messaging.listConversations',
+    run: (sdk, signal) =>
+      sdk.messaging.listConversations(undefined, { signal }),
+  },
+  {
+    name: 'lookups.values',
+    run: (sdk, signal) => sdk.lookups.values({ pick: ['gender'] }, { signal }),
+  },
+]
+
 const expandTemplate = (template: string, params: string[]): string => {
   let index = 0
   return template.replace(/\{[^}]+\}/g, () => {
@@ -781,6 +893,58 @@ const expandTemplate = (template: string, params: string[]): string => {
     }
     return value
   })
+}
+
+const hitsDocumentedRoute = async (entry: OperationCase) => {
+  const params = entry.params ?? []
+  const expectedPath = expandTemplate(entry.template, params)
+
+  // The route must exist in the vendored spec with this method.
+  expect(
+    Reflect.get(spec.paths[entry.template] ?? {}, entry.method.toLowerCase()),
+  ).toBeTruthy()
+
+  const requests: { request: Request; body: string }[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (request: Request) => {
+      requests.push({ request, body: await request.text() })
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }),
+  )
+
+  const sdk = new RespondentSdk({
+    apiKey: 'client-id',
+    apiSecret: 'client-secret',
+  })
+  await entry.run(sdk)
+
+  expect(requests).toHaveLength(1)
+  const call = requests[0]
+  if (!call) {
+    throw new Error('no request captured')
+  }
+
+  const url = new URL(call.request.url)
+  expect(call.request.method).toBe(entry.method)
+  expect(url.pathname).toBe(expectedPath)
+
+  for (const [key, value] of Object.entries(entry.query ?? {})) {
+    expect(url.searchParams.get(key)).toBe(value)
+  }
+
+  if (entry.multipart) {
+    expect(call.request.headers.get('content-type')).toMatch(
+      /^multipart\/form-data; boundary=/,
+    )
+  } else if (entry.body === undefined) {
+    expect(call.body).toBe('')
+  } else {
+    expect(JSON.parse(call.body)).toEqual(entry.body)
+    expect(call.request.headers.get('content-type')).toBe('application/json')
+  }
 }
 
 afterEach(() => {
@@ -811,23 +975,27 @@ describe('wrapper operations', () => {
     expect([...wrapped].sort()).toEqual([...documented].sort())
   })
 
-  it.each(cases)('$name hits the documented route', async (entry) => {
-    const params = entry.params ?? []
-    const expectedPath = expandTemplate(entry.template, params)
+  it.each(cases)('$name hits the documented route', hitsDocumentedRoute)
+})
 
-    // The route must exist in the vendored spec with this method.
-    expect(
-      Reflect.get(spec.paths[entry.template] ?? {}, entry.method.toLowerCase()),
-    ).toBeTruthy()
+describe('messaging delegates', () => {
+  it.each(delegateCases)('$name hits the documented route', hitsDocumentedRoute)
+})
 
-    const requests: { request: Request; body: string }[] = []
+describe('request signals', () => {
+  it.each(signalCases)('$name forwards the caller signal', async (entry) => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (request: Request) => {
-        requests.push({ request, body: await request.text() })
-        return new Response(JSON.stringify({ ok: true }), {
-          headers: { 'Content-Type': 'application/json' },
-        })
+      vi.fn((request: Request) => {
+        // Mirror `fetch`: an already-aborted signal rejects with its reason.
+        if (request.signal.aborted) {
+          return Promise.reject(request.signal.reason as Error)
+        }
+        return Promise.resolve(
+          new Response('{}', {
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        )
       }),
     )
 
@@ -835,31 +1003,11 @@ describe('wrapper operations', () => {
       apiKey: 'client-id',
       apiSecret: 'client-secret',
     })
-    await entry.run(sdk)
+    const controller = new AbortController()
+    const reason = new Error('caller cancelled')
+    controller.abort(reason)
 
-    expect(requests).toHaveLength(1)
-    const call = requests[0]
-    if (!call) {
-      throw new Error('no request captured')
-    }
-
-    const url = new URL(call.request.url)
-    expect(call.request.method).toBe(entry.method)
-    expect(url.pathname).toBe(expectedPath)
-
-    for (const [key, value] of Object.entries(entry.query ?? {})) {
-      expect(url.searchParams.get(key)).toBe(value)
-    }
-
-    if (entry.multipart) {
-      expect(call.request.headers.get('content-type')).toMatch(
-        /^multipart\/form-data; boundary=/,
-      )
-    } else if (entry.body === undefined) {
-      expect(call.body).toBe('')
-    } else {
-      expect(JSON.parse(call.body)).toEqual(entry.body)
-      expect(call.request.headers.get('content-type')).toBe('application/json')
-    }
+    // The signal only reaches the request if the method forwards `options`.
+    await expect(entry.run(sdk, controller.signal)).rejects.toBe(reason)
   })
 })
