@@ -270,6 +270,35 @@ await respondent.projects.list(
 The call rejects with the signal's `reason` exactly as you set it. A configured
 `timeoutMs` still applies alongside your signal; whichever fires first wins.
 
+## Observing requests
+
+Pass `onRequestSettled` to hear about every request once it has settled,
+whether it succeeded or failed. The event carries the redacted request summary
+(`url`, `method`, and headers with the credentials replaced by `[redacted]`),
+the response `status` when one arrived, `durationMs`, and `error` when the call
+rejects: the SDK error for a non-2xx status, a transport failure or a timeout,
+or your own abort reason. It is meant for logging and metrics, and must not
+throw.
+
+```ts
+const respondent = new RespondentSdk({
+  apiKey: process.env.RESPONDENT_API_KEY!,
+  apiSecret: process.env.RESPONDENT_API_SECRET!,
+  onRequestSettled: (event) => {
+    const { method, url } = event.request
+    if (event.error === undefined) {
+      console.info(`respondent ${method} ${url} ${String(event.status)}`)
+    } else {
+      console.error(`respondent ${method} ${url} failed`, event.error)
+    }
+  },
+})
+```
+
+One edge: a 2xx whose body cannot be decoded is reported with its status and no
+`error`, because the response itself was fine. The call still rejects with a
+`RespondentSdkResponseError`.
+
 ## Pagination
 
 List endpoints take `page` (default `1`), `pageSize` (default `50`) and

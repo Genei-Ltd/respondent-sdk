@@ -26,4 +26,8 @@ export {
   RESPONDENT_PRODUCTION_BASE_URL,
   RESPONDENT_STAGING_BASE_URL,
 } from './sdk'
-export type { RespondentRequestOptions, RespondentSdkOptions } from './sdk'
+export type {
+  RespondentRequestEvent,
+  RespondentRequestOptions,
+  RespondentSdkOptions,
+} from './sdk'

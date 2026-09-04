@@ -187,6 +187,7 @@ import {
   isRespondentSdkError,
   redactCredentials,
   redactPayload,
+  type RespondentRequestSummary,
   summarizeRequest,
   summarizeResponseHeaders,
 } from './errors'
@@ -259,6 +260,33 @@ export type RespondentSdkOptions = {
    * response headers, so a server that answers and then stalls still trips it.
    */
   timeoutMs?: number
+  /**
+   * Called once for every request after it settles, whether it succeeded or
+   * failed. Meant for logging and metrics: the request summary carries no
+   * credentials. A 2xx whose body then fails to decode is reported with its
+   * status and no error, because the response itself was fine; the call still
+   * rejects. The hook must not throw.
+   */
+  onRequestSettled?: (event: RespondentRequestEvent) => void
+}
+
+/**
+ * One settled request, as passed to
+ * {@link RespondentSdkOptions.onRequestSettled}.
+ */
+export type RespondentRequestEvent = {
+  /** The request, with credential headers redacted. */
+  request: RespondentRequestSummary
+  /** The response status, when a response arrived. */
+  status?: number
+  /** Milliseconds from sending the request to the outcome. */
+  durationMs: number
+  /**
+   * What the call rejects with: the SDK error for a non-2xx status, a
+   * transport failure or a timeout, or the caller's own abort reason. Absent
+   * when the call succeeds.
+   */
+  error?: unknown
 }
 
 /**
@@ -1695,7 +1723,13 @@ export class RespondentSdk {
   public readonly messaging: MessagingModule
   public readonly lookups: LookupsModule
 
-  constructor({ apiKey, apiSecret, baseUrl, timeoutMs }: RespondentSdkOptions) {
+  constructor({
+    apiKey,
+    apiSecret,
+    baseUrl,
+    timeoutMs,
+    onRequestSettled,
+  }: RespondentSdkOptions) {
     if (
       timeoutMs !== undefined &&
       (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
@@ -1835,6 +1869,52 @@ export class RespondentSdk {
         request: summary,
       })
     })
+
+    if (onRequestSettled) {
+      // Keyed by the Request the interceptors see: with a timeout configured
+      // that is the re-signalled copy, which is why this registers after it.
+      const startedAt = new WeakMap<Request, number>()
+      const settle = (
+        request: Request,
+        outcome: { status?: number; error?: unknown },
+      ) => {
+        const start = startedAt.get(request)
+        const summary = summarizeRequest(request)
+        if (start === undefined || !summary) {
+          return
+        }
+        startedAt.delete(request)
+        onRequestSettled({
+          request: summary,
+          durationMs: Date.now() - start,
+          ...outcome,
+        })
+      }
+
+      clientInstance.interceptors.request.use((request) => {
+        startedAt.set(request, Date.now())
+        return request
+      })
+
+      clientInstance.interceptors.response.use((response, request) => {
+        if (response.ok) {
+          settle(request, { status: response.status })
+        }
+        return response
+      })
+
+      // Registered after the converting interceptor above, so `error` is the
+      // SDK error (or the caller's abort reason), never the raw fetch failure.
+      clientInstance.interceptors.error.use((error, response, request) => {
+        if (request) {
+          settle(request, {
+            ...(response ? { status: response.status } : {}),
+            error,
+          })
+        }
+        return error
+      })
+    }
 
     this.projects = new ProjectsModule(clientInstance, authHeaders)
     this.screenerQuestions = new ScreenerQuestionsModule(

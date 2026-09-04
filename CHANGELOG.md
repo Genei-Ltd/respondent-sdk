@@ -12,6 +12,13 @@ The package has not been published yet, so these changes ship as part of the
 first release and carry no compatibility shims. They are recorded because the
 repository's own consumers track `main`.
 
+### Added
+
+- `onRequestSettled` on `RespondentSdkOptions`: called once per request after
+  it settles, with the redacted request summary, the response status when one
+  arrived, the duration, and the error when the call rejects. For logging and
+  metrics.
+
 ### Changed
 
 - **Breaking.** `RespondentSdkApiError` and `RespondentSdkResponseError` no
