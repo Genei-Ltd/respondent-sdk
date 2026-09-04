@@ -96,10 +96,14 @@ version fails to resolve, this is why. Do not work around it.
 
 - **Refresh documentation**
   - Sync `README.md` usage examples and the module list with the wrapper.
-  - Record breaking changes in the release notes.
+  - Record every user-visible change in `CHANGELOG.md`, under `## [Unreleased]`.
+    This is where release notes live. A breaking change is marked **Breaking**
+    and says what to write instead — no check enforces it, so it is on you.
 
 - **Pre-publish checks**
   - Run `pnpm run check`.
+  - Confirm `CHANGELOG.md` describes everything in the release, and move the
+    `Unreleased` entries under the new version heading.
   - Confirm package metadata (version, exports) still matches the build output.
 
 ---

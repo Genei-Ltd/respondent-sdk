@@ -23,6 +23,8 @@ endpoints:
    That runs schema validation, `generate:check`, type-check, lint, format
    check, build and tests.
 5. Publish:
+   - Move the `Unreleased` entries in `CHANGELOG.md` under a heading for the new
+     version. Release notes come from that file.
    - Update the version (`pnpm version <patch|minor|major>`).
    - Push the version commit and tag (`git push && git push --tags`).
    - `pnpm publish` when you are ready to release.
