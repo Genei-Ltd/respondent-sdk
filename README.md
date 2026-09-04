@@ -441,9 +441,9 @@ Three gaps matter:
    it claims the id.
 
 Two smaller hardening notes: a delivery carrying more than one signature header
-is treated as unsigned, and a digest is decoded only if it is strict padded
-base64 (`Buffer.from(value, 'base64')` on its own silently accepts trailing
-junk).
+is treated as unsigned, and a digest is decoded only if it is canonical padded
+base64. `Buffer.from(value, 'base64')` on its own silently accepts trailing
+junk, and accepts several spellings of the same digest.
 
 Other operational facts: each team has exactly one active webhook, events fire
 only for projects created via the API, you must return 2xx within 3 seconds, and

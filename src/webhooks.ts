@@ -50,11 +50,21 @@ export type ParsedWebhookSignature = {
 const BASE64_PATTERN =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
 
+/**
+ * Decode padded standard base64, and only its canonical spelling.
+ *
+ * The pattern alone still admits several spellings of one digest: the final
+ * character of a padded group carries bits that fall outside the decoded bytes,
+ * and `Buffer.from` discards them, so `QR==` and `QQ==` both decode to `A`.
+ * Re-encoding and comparing rejects every spelling but the canonical one, so a
+ * signature has exactly one accepted form.
+ */
 const decodeStrictBase64 = (value: string): Buffer | undefined => {
   if (value.length === 0 || !BASE64_PATTERN.test(value)) {
     return undefined
   }
-  return Buffer.from(value, 'base64')
+  const decoded = Buffer.from(value, 'base64')
+  return decoded.toString('base64') === value ? decoded : undefined
 }
 
 /**

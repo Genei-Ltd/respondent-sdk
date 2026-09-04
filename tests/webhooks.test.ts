@@ -35,6 +35,30 @@ const RAW_BODY = JSON.stringify(EVENT)
 const sign = (body: string, algorithm = 'sha256', key = PRIVATE_KEY) =>
   `${algorithm}=${createHmac(algorithm, key).update(body).digest('base64')}`
 
+const digestOf = (body: string, key = PRIVATE_KEY) =>
+  createHmac('sha256', key).update(body).digest('base64')
+
+const BASE64_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+/**
+ * Re-spell a padded base64 digest with non-zero padding bits. The last data
+ * character of a padded group carries bits that fall outside the decoded
+ * bytes, so nudging it up by one changes the spelling and nothing else.
+ */
+const withNonZeroPaddingBits = (digest: string): string => {
+  const index = digest.indexOf('=') - 1
+  const character = digest[index]
+  if (index < 0 || character === undefined) {
+    throw new Error('digest is not padded')
+  }
+  const respelled = BASE64_ALPHABET[BASE64_ALPHABET.indexOf(character) + 1]
+  if (respelled === undefined) {
+    throw new Error('digest is not canonical')
+  }
+  return digest.slice(0, index) + respelled + digest.slice(index + 1)
+}
+
 describe('parseWebhookSignatureHeader', () => {
   it('splits the algorithm prefix from the digest', () => {
     const digest = createHmac('sha256', PRIVATE_KEY)
@@ -67,6 +91,20 @@ describe('parseWebhookSignatureHeader', () => {
     ).toBeUndefined()
     expect(parseWebhookSignatureHeader('sha256=abc123')).toBeUndefined()
     expect(parseWebhookSignatureHeader('sha256=****')).toBeUndefined()
+  })
+
+  it('rejects a digest whose padding bits are not zero', () => {
+    const digest = digestOf(RAW_BODY)
+    const respelled = withNonZeroPaddingBits(digest)
+
+    // Same bytes, a second spelling: `Buffer.from` drops the extra bits.
+    expect(respelled).not.toBe(digest)
+    expect(Buffer.from(respelled, 'base64')).toEqual(
+      Buffer.from(digest, 'base64'),
+    )
+
+    expect(parseWebhookSignatureHeader(`sha256=${digest}`)).toBeTruthy()
+    expect(parseWebhookSignatureHeader(`sha256=${respelled}`)).toBeUndefined()
   })
 })
 
@@ -175,6 +213,17 @@ describe('verifyWebhookSignatureFromRawBody', () => {
       verifyWebhookSignatureFromRawBody({
         rawBody: RAW_BODY,
         signatureHeader: `${sign(RAW_BODY)}garbage`,
+        privateKey: PRIVATE_KEY,
+      }),
+    ).toBe(false)
+  })
+
+  it('rejects a correct signature re-spelled with non-zero padding bits', () => {
+    // A digest must have exactly one accepted spelling.
+    expect(
+      verifyWebhookSignatureFromRawBody({
+        rawBody: RAW_BODY,
+        signatureHeader: `sha256=${withNonZeroPaddingBits(digestOf(RAW_BODY))}`,
         privateKey: PRIVATE_KEY,
       }),
     ).toBe(false)
