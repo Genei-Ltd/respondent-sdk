@@ -560,16 +560,26 @@ vendored file ever drifts out of that normal form.
 - `pnpm run tc` – type-check without emitting.
 - `pnpm run lint` – ESLint across the repository.
 - `pnpm run test` – Vitest.
+- `pnpm run test:dist` – smoke-test the built bundles with `node --test`. No
+  dev toolchain, so it also runs on Node 18. Build first.
 - `pnpm run format` – Prettier check.
 - `pnpm run build` – dual ESM/CJS bundles in `dist/` via tsdown.
 - `pnpm run check` – schema validation, `generate:check`, type-check, lint,
-  format check, build, then tests. This is what runs before publishing.
+  format check, build, tests, then the dist smoke tests. This is what runs
+  before publishing, and what CI runs.
 
 ## Node versions
 
 The published package targets Node 18 and up (`engines.node`). Working on the
 SDK needs a newer runtime — `devEngines.runtime` asks for Node 22.18+, which is
 what `@hey-api/openapi-ts`, ESLint and Vitest require.
+
+That gap is covered rather than assumed: `.github/workflows/check.yml` runs
+`pnpm run check` on Node 22, then loads the built bundles and exercises them —
+ESM and CJS entry points, every subpath, a request, a refused redirect, the
+timeout and a multipart upload — on Node 18, 20, 22 and 24. Those smoke tests
+(`tests/dist-smoke.mjs`, run by `pnpm run test:dist`) use `node --test` and the
+package's own runtime dependency, nothing else.
 
 ## License
 

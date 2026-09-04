@@ -40,10 +40,18 @@ version fails to resolve, this is why. Do not work around it.
 - `pnpm run tc` — type-check without emitting.
 - `pnpm run lint` — ESLint across the repository.
 - `pnpm run test` — Vitest.
+- `pnpm run test:dist` — `node --test tests/dist-smoke.mjs`: the built bundles,
+  exercised with no dev toolchain, so it runs on Node 18 too. Build first.
 - `pnpm run format` / `pnpm run format:write` — Prettier check / fix.
 - `pnpm run build` — dual ESM/CJS bundles in `dist/` via tsdown.
 - `pnpm run check` — schema validation, `generate:check`, type-check, lint,
-  format check, build, then tests. It does not fetch the spec.
+  format check, build, tests, then the dist smoke tests. It does not fetch the
+  spec.
+
+`.github/workflows/check.yml` runs `pnpm run check` on Node 22 and then
+`pnpm run test:dist` against the built `dist/` on Node 18, 20, 22 and 24. Keep
+`tests/dist-smoke.mjs` free of anything Node 18 cannot run — that file is the
+only check that `engines.node` is true.
 
 ---
 

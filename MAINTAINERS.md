@@ -21,7 +21,9 @@ endpoints:
    pnpm run check
    ```
    That runs schema validation, `generate:check`, type-check, lint, format
-   check, build and tests.
+   check, build, tests and the dist smoke tests. CI runs the same command on
+   Node 22, then `pnpm run test:dist` against the built bundles on Node 18, 20,
+   22 and 24 (`.github/workflows/check.yml`).
 5. Publish:
    - Move the `Unreleased` entries in `CHANGELOG.md` under a heading for the new
      version. Release notes come from that file.
