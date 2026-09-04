@@ -12,7 +12,7 @@
 import {
   RESPONDENT_STAGING_BASE_URL,
   RespondentSdk,
-  isRespondentSdkError,
+  isRespondentSdkApiError,
 } from '../src/index'
 
 const apiKey = process.env.RESPONDENT_API_KEY
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  if (isRespondentSdkError(error)) {
+  if (isRespondentSdkApiError(error)) {
     console.error(
       `Respondent API error ${String(error.status)}: ${error.message}`,
       error.payload,

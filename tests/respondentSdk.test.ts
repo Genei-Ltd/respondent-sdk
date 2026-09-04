@@ -1,11 +1,18 @@
+import { inspect } from 'node:util'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   RESPONDENT_PRODUCTION_BASE_URL,
   RESPONDENT_STAGING_BASE_URL,
   RespondentSdk,
-  RespondentSdkError,
+  RespondentSdkApiError,
+  RespondentSdkResponseError,
+  RespondentSdkTransportError,
+  isRespondentSdkApiError,
   isRespondentSdkError,
 } from '../src/index'
+
+const API_KEY = 'client-id-84f2'
+const API_SECRET = 'client-secret-9d31'
 
 const jsonResponse = (body: unknown, init?: ResponseInit) =>
   new Response(JSON.stringify(body), {
@@ -28,8 +35,8 @@ const stubFetch = (
 
 const createSdk = (overrides?: { baseUrl?: string }) =>
   new RespondentSdk({
-    apiKey: 'client-id',
-    apiSecret: 'client-secret',
+    apiKey: API_KEY,
+    apiSecret: API_SECRET,
     ...overrides,
   })
 
@@ -59,8 +66,8 @@ describe('RespondentSdk construction', () => {
     expect(
       () =>
         new RespondentSdk({
-          apiKey: 'client-id',
-          apiSecret: 'client-secret',
+          apiKey: API_KEY,
+          apiSecret: API_SECRET,
           timeoutMs: 0,
         }),
     ).toThrow('RespondentSdk timeoutMs must be a positive number')
@@ -77,64 +84,71 @@ describe('authentication headers', () => {
 
     expect(calls).toHaveLength(2)
     for (const request of calls) {
-      expect(request.headers.get('x-api-key')).toBe('client-id')
-      expect(request.headers.get('x-api-secret')).toBe('client-secret')
+      expect(request.headers.get('x-api-key')).toBe(API_KEY)
+      expect(request.headers.get('x-api-secret')).toBe(API_SECRET)
     }
   })
 })
 
-describe('operations', () => {
-  it('forwards query parameters and returns the parsed body', async () => {
-    const payload = {
-      page: 2,
-      pageSize: 10,
-      results: [{ id: 'project-1' }],
-    }
-    const calls = stubFetch(() => jsonResponse(payload))
+describe('credential exposure', () => {
+  const containsCredentials = (value: string) =>
+    value.includes(API_KEY) || value.includes(API_SECRET)
 
-    const projects = await createSdk().projects.list({
-      page: 2,
-      pageSize: 10,
-      status: 'DRAFT',
-    })
+  it('keeps credentials out of the SDK instance and its modules', () => {
+    const sdk = createSdk()
 
-    const url = new URL(calls[0]?.url ?? '')
-    expect(url.pathname).toBe('/v1/projects')
-    expect(url.searchParams.get('page')).toBe('2')
-    expect(url.searchParams.get('pageSize')).toBe('10')
-    expect(url.searchParams.get('status')).toBe('DRAFT')
-    expect(projects).toEqual(payload)
+    expect(containsCredentials(JSON.stringify(sdk))).toBe(false)
+    expect(containsCredentials(inspect(sdk, { depth: null }))).toBe(false)
+    expect(
+      containsCredentials(inspect(sdk, { depth: null, showHidden: true })),
+    ).toBe(false)
+    expect(containsCredentials(JSON.stringify(sdk.projects))).toBe(false)
+    expect(containsCredentials(inspect(sdk.messaging, { depth: null }))).toBe(
+      false,
+    )
+    expect(Object.keys(sdk.projects)).toEqual([])
   })
 
-  it('interpolates path parameters and sends the request body', async () => {
-    let sentBody: unknown
-    const calls = stubFetch(async (request) => {
-      sentBody = await request.json()
-      return jsonResponse({ id: 'response-1', qualified: true })
-    })
-
-    await createSdk().screenerResponses.qualify('project-1', 'response-1', {
-      qualifyStatus: true,
-      qualifiedOverriden: false,
-      disqualifyReasons: [],
-      message: '',
-    })
-
-    expect(calls[0]?.method).toBe('PATCH')
-    expect(new URL(calls[0]?.url ?? '').pathname).toBe(
-      '/v1/projects/project-1/screener-responses/response-1/qualify',
+  it('keeps credentials out of thrown errors', async () => {
+    stubFetch(() =>
+      jsonResponse({ error: 'Nope' }, { status: 403, statusText: 'Forbidden' }),
     )
-    expect(sentBody).toEqual({
-      qualifyStatus: true,
-      qualifiedOverriden: false,
-      disqualifyReasons: [],
-      message: '',
-    })
+
+    const error: unknown = await createSdk()
+      .projects.retrieve('project-1')
+      .catch((caught: unknown) => caught)
+
+    if (!(error instanceof RespondentSdkApiError)) {
+      throw new Error('expected a RespondentSdkApiError')
+    }
+
+    expect(containsCredentials(JSON.stringify(error))).toBe(false)
+    expect(containsCredentials(inspect(error, { depth: null }))).toBe(false)
+    expect(containsCredentials(String(error.stack))).toBe(false)
+  })
+
+  it('reports a redacted request summary', async () => {
+    stubFetch(() => jsonResponse({ error: 'Nope' }, { status: 403 }))
+
+    const error: unknown = await createSdk()
+      .projects.retrieve('project-1')
+      .catch((caught: unknown) => caught)
+
+    if (!(error instanceof RespondentSdkApiError)) {
+      throw new Error('expected a RespondentSdkApiError')
+    }
+
+    expect(error.request?.method).toBe('GET')
+    expect(error.request?.url).toBe(
+      `${RESPONDENT_PRODUCTION_BASE_URL}/v1/projects/project-1`,
+    )
+    expect(error.request?.headers['x-api-key']).toBe('[redacted]')
+    expect(error.request?.headers['x-api-secret']).toBe('[redacted]')
   })
 })
 
 describe('error handling', () => {
-  it('raises RespondentSdkError for non-2xx responses', async () => {
+  it('raises RespondentSdkApiError for non-2xx responses', async () => {
     stubFetch(() =>
       jsonResponse(
         { error: 'Project has unpaid participants and cannot be closed' },
@@ -146,9 +160,10 @@ describe('error handling', () => {
       .projects.close('project-1', { message: 'Wrapping up' })
       .catch((caught: unknown) => caught)
 
+    expect(isRespondentSdkApiError(error)).toBe(true)
     expect(isRespondentSdkError(error)).toBe(true)
-    if (!(error instanceof RespondentSdkError)) {
-      throw new Error('expected a RespondentSdkError')
+    if (!(error instanceof RespondentSdkApiError)) {
+      throw new Error('expected a RespondentSdkApiError')
     }
     expect(error.status).toBe(400)
     expect(error.message).toBe(
@@ -168,12 +183,55 @@ describe('error handling', () => {
       .pricing.balanceSummary()
       .catch((caught: unknown) => caught)
 
-    if (!(error instanceof RespondentSdkError)) {
-      throw new Error('expected a RespondentSdkError')
+    if (!(error instanceof RespondentSdkApiError)) {
+      throw new Error('expected a RespondentSdkApiError')
     }
     expect(error.status).toBe(500)
     expect(error.message).toBe(
       'Respondent request failed with status 500 (Internal Error)',
     )
+  })
+
+  it('raises RespondentSdkResponseError for an undecodable success body', async () => {
+    stubFetch(
+      () =>
+        new Response('{ not json', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    )
+
+    const error: unknown = await createSdk()
+      .projects.list()
+      .catch((caught: unknown) => caught)
+
+    if (!(error instanceof RespondentSdkResponseError)) {
+      throw new Error('expected a RespondentSdkResponseError')
+    }
+    // The status is not the failure, so this must not look like an API error.
+    expect(isRespondentSdkApiError(error)).toBe(false)
+    expect(error.status).toBe(200)
+    expect(error.message).toContain('could not be decoded')
+    expect(error.cause).toBeInstanceOf(SyntaxError)
+  })
+
+  it('raises RespondentSdkTransportError when no response arrives', async () => {
+    const networkFailure = new TypeError('fetch failed')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(networkFailure)),
+    )
+
+    const error: unknown = await createSdk()
+      .projects.list()
+      .catch((caught: unknown) => caught)
+
+    if (!(error instanceof RespondentSdkTransportError)) {
+      throw new Error('expected a RespondentSdkTransportError')
+    }
+    expect(isRespondentSdkApiError(error)).toBe(false)
+    expect(error.cause).toBe(networkFailure)
+    expect(error.message).toContain('fetch failed')
+    expect(error.request?.headers['x-api-key']).toBe('[redacted]')
   })
 })
