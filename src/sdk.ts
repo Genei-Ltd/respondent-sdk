@@ -1,5 +1,76 @@
-import { createClient } from './generated/client'
-import { GeneratedRespondentSdk } from './generated/sdk.gen'
+import { type Client, createClient } from './generated/client'
+import {
+  deleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserId,
+  deleteV1ProjectsByProjectId,
+  deleteV1ProjectsByProjectIdQuota,
+  deleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId,
+  deleteV1WebhooksByWebhookId,
+  getV1Industries,
+  getV1JobTitles,
+  getV1Lookups,
+  getV1MessagingConversations,
+  getV1MessagingConversationsByConversationUid,
+  getV1MessagingMessages,
+  getV1MessagingMessagesByMessageUid,
+  getV1MessagingMessagesInbox,
+  getV1PricingBalancesSummary,
+  getV1ProfilesByProfileId,
+  getV1Projects,
+  getV1ProjectsByProjectId,
+  getV1ProjectsByProjectIdFeasibilityAudienceSizeEstimate,
+  getV1ProjectsByProjectIdQuota,
+  getV1ProjectsByProjectIdScreenerQuestions,
+  getV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId,
+  getV1ProjectsByProjectIdScreenerResponses,
+  getV1ProjectsByProjectIdScreenerResponsesByScreenerResponseId,
+  getV1ProjectsByProjectIdScreenerResponsesPayouts,
+  getV1Skills,
+  getV1TeamRespondents,
+  getV1TeamRespondentsProfilesByProfileId,
+  getV1Topics,
+  getV1Webhooks,
+  getV1WebhooksByWebhookId,
+  getV1WebhooksByWebhookIdEventTypes,
+  patchV1MessagingConversationsByConversationUid,
+  patchV1MessagingConversationsByConversationUidRead,
+  patchV1ProjectsByProjectId,
+  patchV1ProjectsByProjectIdClose,
+  patchV1ProjectsByProjectIdPause,
+  patchV1ProjectsByProjectIdPublish,
+  patchV1ProjectsByProjectIdQuota,
+  patchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId,
+  patchV1ProjectsByProjectIdScreenerQuestionsOrder,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttended,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBooking,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinvite,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInvite,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavorite,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHide,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInvite,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShow,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBooking,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualify,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReject,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReport,
+  patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdSchedule,
+  postV1MessagingConversations,
+  postV1MessagingConversationsByConversationUidMessages,
+  postV1MessagingConversationsByConversationUidParticipants,
+  postV1Profiles,
+  postV1Projects,
+  postV1ProjectsByProjectIdCopy,
+  postV1ProjectsByProjectIdQuota,
+  postV1ProjectsByProjectIdScreenerQuestions,
+  postV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswers,
+  postV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayouts,
+  postV1ProjectsSuggestions,
+  postV1Webhooks,
+  postV1WebhooksByWebhookIdSimulate,
+  putV1ProjectsByProjectIdExternalScreenerQuestionsBulk,
+  putV1ProjectsByProjectIdFilesFormData,
+  putV1ProjectsByProjectIdScreenerQuestionsBulk,
+  putV1TeamRespondentsBatchInvite,
+} from './generated/sdk.gen'
 import type {
   DeleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdResponse,
   DeleteV1ProjectsByProjectIdQuotaResponse,
@@ -114,7 +185,10 @@ import {
   RespondentSdkTimeoutError,
   RespondentSdkTransportError,
   isRespondentSdkError,
+  redactCredentials,
+  redactPayload,
   summarizeRequest,
+  summarizeResponseHeaders,
 } from './errors'
 
 /**
@@ -137,6 +211,25 @@ export const RESPONDENT_STAGING_BASE_URL = 'https://api-staging.respondent.io'
 
 const API_KEY_HEADER_NAME = 'x-api-key'
 const API_SECRET_HEADER_NAME = 'x-api-secret'
+
+/**
+ * The largest delay `setTimeout` honours. A longer delay wraps round to 1ms in
+ * Node and in browsers, so a caller asking for a very long deadline would have
+ * every request aborted almost at once. Rejected at construction instead.
+ */
+const MAX_TIMEOUT_MS = 2_147_483_647
+
+/**
+ * Every module declares its own `readonly #client` and `readonly #headers`.
+ * They are ECMAScript private fields, so they are neither enumerable nor
+ * reachable by reflection, and no accessor exposes them: logging or serialising
+ * a `RespondentSdk`, or any of its modules, cannot print the API key and
+ * secret. A shared base class cannot hold them, because a `protected` getter is
+ * only private to the type-checker and is an ordinary public property at
+ * runtime. The credential objects exist once and are shared by reference. The
+ * generated operations are plain functions taking the client as an argument, so
+ * nothing else holds a reference to it either.
+ */
 
 type AuthHeaders = {
   [API_KEY_HEADER_NAME]: string
@@ -189,44 +282,28 @@ const requestControls = (
   options?.signal ? { signal: options.signal } : {}
 
 /**
- * The credentials and the generated client live behind `#private` fields so
- * they are neither enumerable nor reachable by reflection: logging or
- * serialising a `RespondentSdk`, or any of its modules, cannot print the API
- * key and secret. The credential object itself exists once and is shared by
- * reference.
- */
-class RespondentModule {
-  readonly #sdk: GeneratedRespondentSdk
-  readonly #headers: AuthHeaders
-
-  constructor(sdk: GeneratedRespondentSdk, headers: AuthHeaders) {
-    this.#sdk = sdk
-    this.#headers = headers
-  }
-
-  protected get sdk(): GeneratedRespondentSdk {
-    return this.#sdk
-  }
-
-  protected get headers(): AuthHeaders {
-    return this.#headers
-  }
-}
-
-/**
  * Projects are the unit of recruitment. Create a draft, attach screener
  * questions, then publish.
  *
  * @see https://developers.respondent.io/projects/create-a-project
  */
-class ProjectsModule extends RespondentModule {
+class ProjectsModule {
+  readonly #client: Client
+  readonly #headers: AuthHeaders
+
+  constructor(client: Client, headers: AuthHeaders) {
+    this.#client = client
+    this.#headers = headers
+  }
+
   /** Retrieve all projects. */
   async list(
     query?: GetV1ProjectsData['query'],
     options?: RespondentRequestOptions,
   ): Promise<GetV1ProjectsResponse> {
-    const result = await this.sdk.getV1Projects<true>({
-      headers: this.headers,
+    const result = await getV1Projects<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       ...(query ? { query } : {}),
     })
@@ -238,9 +315,10 @@ class ProjectsModule extends RespondentModule {
     body: PostV1ProjectsData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PostV1ProjectsResponse> {
-    const result = await this.sdk.postV1Projects<true>({
+    const result = await postV1Projects<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
     })
     return result.data
@@ -251,8 +329,9 @@ class ProjectsModule extends RespondentModule {
     projectId: string,
     options?: RespondentRequestOptions,
   ): Promise<GetV1ProjectsByProjectIdResponse> {
-    const result = await this.sdk.getV1ProjectsByProjectId<true>({
-      headers: this.headers,
+    const result = await getV1ProjectsByProjectId<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
     })
@@ -265,9 +344,10 @@ class ProjectsModule extends RespondentModule {
     body: PatchV1ProjectsByProjectIdData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdResponse> {
-    const result = await this.sdk.patchV1ProjectsByProjectId<true>({
+    const result = await patchV1ProjectsByProjectId<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
     })
@@ -279,8 +359,9 @@ class ProjectsModule extends RespondentModule {
     projectId: string,
     options?: RespondentRequestOptions,
   ): Promise<void> {
-    await this.sdk.deleteV1ProjectsByProjectId<true>({
-      headers: this.headers,
+    await deleteV1ProjectsByProjectId<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
     })
@@ -291,8 +372,9 @@ class ProjectsModule extends RespondentModule {
     projectId: string,
     options?: RespondentRequestOptions,
   ): Promise<PostV1ProjectsByProjectIdCopyResponse> {
-    const result = await this.sdk.postV1ProjectsByProjectIdCopy<true>({
-      headers: this.headers,
+    const result = await postV1ProjectsByProjectIdCopy<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
     })
@@ -308,8 +390,9 @@ class ProjectsModule extends RespondentModule {
     projectId: string,
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdPublishResponse> {
-    const result = await this.sdk.patchV1ProjectsByProjectIdPublish<true>({
-      headers: this.headers,
+    const result = await patchV1ProjectsByProjectIdPublish<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
     })
@@ -322,9 +405,10 @@ class ProjectsModule extends RespondentModule {
     body: PatchV1ProjectsByProjectIdPauseData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdPauseResponse> {
-    const result = await this.sdk.patchV1ProjectsByProjectIdPause<true>({
+    const result = await patchV1ProjectsByProjectIdPause<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
     })
@@ -337,9 +421,10 @@ class ProjectsModule extends RespondentModule {
     body: PatchV1ProjectsByProjectIdCloseData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdCloseResponse> {
-    const result = await this.sdk.patchV1ProjectsByProjectIdClose<true>({
+    const result = await patchV1ProjectsByProjectIdClose<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
     })
@@ -352,13 +437,12 @@ class ProjectsModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<GetV1ProjectsByProjectIdFeasibilityAudienceSizeEstimateResponse> {
     const result =
-      await this.sdk.getV1ProjectsByProjectIdFeasibilityAudienceSizeEstimate<true>(
-        {
-          headers: this.headers,
-          ...requestControls(options),
-          path: { projectId },
-        },
-      )
+      await getV1ProjectsByProjectIdFeasibilityAudienceSizeEstimate<true>({
+        client: this.#client,
+        headers: this.#headers,
+        ...requestControls(options),
+        path: { projectId },
+      })
     return result.data
   }
 
@@ -374,14 +458,13 @@ class ProjectsModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PutV1ProjectsByProjectIdExternalScreenerQuestionsBulkResponse> {
     const result =
-      await this.sdk.putV1ProjectsByProjectIdExternalScreenerQuestionsBulk<true>(
-        {
-          body,
-          headers: this.headers,
-          ...requestControls(options),
-          path: { projectId },
-        },
-      )
+      await putV1ProjectsByProjectIdExternalScreenerQuestionsBulk<true>({
+        client: this.#client,
+        body,
+        headers: this.#headers,
+        ...requestControls(options),
+        path: { projectId },
+      })
     return result.data
   }
 
@@ -410,9 +493,10 @@ class ProjectsModule extends RespondentModule {
     query: PutV1ProjectsByProjectIdFilesFormDataData['query'],
     options?: RespondentRequestOptions,
   ): Promise<PutV1ProjectsByProjectIdFilesFormDataResponse> {
-    const result = await this.sdk.putV1ProjectsByProjectIdFilesFormData<true>({
+    const result = await putV1ProjectsByProjectIdFilesFormData<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
       query,
@@ -425,9 +509,10 @@ class ProjectsModule extends RespondentModule {
     body: PostV1ProjectsSuggestionsData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PostV1ProjectsSuggestionsResponse> {
-    const result = await this.sdk.postV1ProjectsSuggestions<true>({
+    const result = await postV1ProjectsSuggestions<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
     })
     return result.data
@@ -437,18 +522,26 @@ class ProjectsModule extends RespondentModule {
 /**
  * Screener questions belong to a project. A project may hold at most 40.
  */
-class ScreenerQuestionsModule extends RespondentModule {
+class ScreenerQuestionsModule {
+  readonly #client: Client
+  readonly #headers: AuthHeaders
+
+  constructor(client: Client, headers: AuthHeaders) {
+    this.#client = client
+    this.#headers = headers
+  }
+
   /** Retrieve the screener questions on a project. */
   async list(
     projectId: string,
     options?: RespondentRequestOptions,
   ): Promise<GetV1ProjectsByProjectIdScreenerQuestionsResponse> {
-    const result =
-      await this.sdk.getV1ProjectsByProjectIdScreenerQuestions<true>({
-        headers: this.headers,
-        ...requestControls(options),
-        path: { projectId },
-      })
+    const result = await getV1ProjectsByProjectIdScreenerQuestions<true>({
+      client: this.#client,
+      headers: this.#headers,
+      ...requestControls(options),
+      path: { projectId },
+    })
     return result.data
   }
 
@@ -458,13 +551,13 @@ class ScreenerQuestionsModule extends RespondentModule {
     body: PostV1ProjectsByProjectIdScreenerQuestionsData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PostV1ProjectsByProjectIdScreenerQuestionsResponse> {
-    const result =
-      await this.sdk.postV1ProjectsByProjectIdScreenerQuestions<true>({
-        body,
-        headers: this.headers,
-        ...requestControls(options),
-        path: { projectId },
-      })
+    const result = await postV1ProjectsByProjectIdScreenerQuestions<true>({
+      client: this.#client,
+      body,
+      headers: this.#headers,
+      ...requestControls(options),
+      path: { projectId },
+    })
     return result.data
   }
 
@@ -477,13 +570,13 @@ class ScreenerQuestionsModule extends RespondentModule {
     body: PutV1ProjectsByProjectIdScreenerQuestionsBulkData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PutV1ProjectsByProjectIdScreenerQuestionsBulkResponse> {
-    const result =
-      await this.sdk.putV1ProjectsByProjectIdScreenerQuestionsBulk<true>({
-        body,
-        headers: this.headers,
-        ...requestControls(options),
-        path: { projectId },
-      })
+    const result = await putV1ProjectsByProjectIdScreenerQuestionsBulk<true>({
+      client: this.#client,
+      body,
+      headers: this.#headers,
+      ...requestControls(options),
+      path: { projectId },
+    })
     return result.data
   }
 
@@ -494,9 +587,10 @@ class ScreenerQuestionsModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<GetV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponse> {
     const result =
-      await this.sdk.getV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId<true>(
+      await getV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId<true>(
         {
-          headers: this.headers,
+          client: this.#client,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerQuestionId },
         },
@@ -512,10 +606,11 @@ class ScreenerQuestionsModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId<true>(
+      await patchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId<true>(
         {
+          client: this.#client,
           body,
-          headers: this.headers,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerQuestionId },
         },
@@ -530,9 +625,10 @@ class ScreenerQuestionsModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<DeleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponse> {
     const result =
-      await this.sdk.deleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId<true>(
+      await deleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId<true>(
         {
-          headers: this.headers,
+          client: this.#client,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerQuestionId },
         },
@@ -546,13 +642,15 @@ class ScreenerQuestionsModule extends RespondentModule {
     body: PatchV1ProjectsByProjectIdScreenerQuestionsOrderData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerQuestionsOrderResponse> {
-    const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerQuestionsOrder<true>({
+    const result = await patchV1ProjectsByProjectIdScreenerQuestionsOrder<true>(
+      {
+        client: this.#client,
         body,
-        headers: this.headers,
+        headers: this.#headers,
         ...requestControls(options),
         path: { projectId },
-      })
+      },
+    )
     return result.data
   }
 }
@@ -562,20 +660,28 @@ class ScreenerQuestionsModule extends RespondentModule {
  * lifecycle is qualify -> invite -> schedule -> mark as attended, and marking a
  * participant as attended is what starts the incentive payment.
  */
-class ScreenerResponsesModule extends RespondentModule {
+class ScreenerResponsesModule {
+  readonly #client: Client
+  readonly #headers: AuthHeaders
+
+  constructor(client: Client, headers: AuthHeaders) {
+    this.#client = client
+    this.#headers = headers
+  }
+
   /** List the screener responses on a project. */
   async list(
     projectId: string,
     query?: GetV1ProjectsByProjectIdScreenerResponsesData['query'],
     options?: RespondentRequestOptions,
   ): Promise<GetV1ProjectsByProjectIdScreenerResponsesResponse> {
-    const result =
-      await this.sdk.getV1ProjectsByProjectIdScreenerResponses<true>({
-        headers: this.headers,
-        ...requestControls(options),
-        path: { projectId },
-        ...(query ? { query } : {}),
-      })
+    const result = await getV1ProjectsByProjectIdScreenerResponses<true>({
+      client: this.#client,
+      headers: this.#headers,
+      ...requestControls(options),
+      path: { projectId },
+      ...(query ? { query } : {}),
+    })
     return result.data
   }
 
@@ -584,12 +690,14 @@ class ScreenerResponsesModule extends RespondentModule {
     projectId: string,
     options?: RespondentRequestOptions,
   ): Promise<GetV1ProjectsByProjectIdScreenerResponsesPayoutsResponse> {
-    const result =
-      await this.sdk.getV1ProjectsByProjectIdScreenerResponsesPayouts<true>({
-        headers: this.headers,
+    const result = await getV1ProjectsByProjectIdScreenerResponsesPayouts<true>(
+      {
+        client: this.#client,
+        headers: this.#headers,
         ...requestControls(options),
         path: { projectId },
-      })
+      },
+    )
     return result.data
   }
 
@@ -600,9 +708,10 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<GetV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdResponse> {
     const result =
-      await this.sdk.getV1ProjectsByProjectIdScreenerResponsesByScreenerResponseId<true>(
+      await getV1ProjectsByProjectIdScreenerResponsesByScreenerResponseId<true>(
         {
-          headers: this.headers,
+          client: this.#client,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -618,10 +727,11 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualifyResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualify<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualify<true>(
         {
+          client: this.#client,
           body,
-          headers: this.headers,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -637,10 +747,11 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInviteResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInvite<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInvite<true>(
         {
+          client: this.#client,
           body,
-          headers: this.headers,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -656,10 +767,11 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdScheduleResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdSchedule<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdSchedule<true>(
         {
+          client: this.#client,
           body,
-          headers: this.headers,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -679,9 +791,10 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttendedResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttended<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttended<true>(
         {
-          headers: this.headers,
+          client: this.#client,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -696,9 +809,10 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShowResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShow<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShow<true>(
         {
-          headers: this.headers,
+          client: this.#client,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -713,9 +827,10 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdRejectResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReject<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReject<true>(
         {
-          headers: this.headers,
+          client: this.#client,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -731,10 +846,11 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReportResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReport<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReport<true>(
         {
+          client: this.#client,
           body,
-          headers: this.headers,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -750,10 +866,11 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavoriteResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavorite<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavorite<true>(
         {
+          client: this.#client,
           body,
-          headers: this.headers,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -769,10 +886,11 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHideResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHide<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHide<true>(
         {
+          client: this.#client,
           body,
-          headers: this.headers,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -787,9 +905,10 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInviteResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInvite<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInvite<true>(
         {
-          headers: this.headers,
+          client: this.#client,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -804,9 +923,10 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBooking<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBooking<true>(
         {
-          headers: this.headers,
+          client: this.#client,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -822,10 +942,11 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinviteResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinvite<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinvite<true>(
         {
+          client: this.#client,
           body,
-          headers: this.headers,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -841,10 +962,11 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBookingResponse> {
     const result =
-      await this.sdk.patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBooking<true>(
+      await patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBooking<true>(
         {
+          client: this.#client,
           body,
-          headers: this.headers,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -863,10 +985,11 @@ class ScreenerResponsesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswersResponse> {
     const result =
-      await this.sdk.postV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswers<true>(
+      await postV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswers<true>(
         {
+          client: this.#client,
           body,
-          headers: this.headers,
+          headers: this.#headers,
           ...requestControls(options),
           path: { projectId, screenerResponseId },
         },
@@ -881,10 +1004,11 @@ class ScreenerResponsesModule extends RespondentModule {
     body: PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayoutsData['body'],
     options?: RespondentRequestOptions,
   ): Promise<void> {
-    await this.sdk.postV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayouts<true>(
+    await postV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayouts<true>(
       {
+        client: this.#client,
         body,
-        headers: this.headers,
+        headers: this.#headers,
         ...requestControls(options),
         path: { projectId, screenerResponseId },
       },
@@ -895,16 +1019,25 @@ class ScreenerResponsesModule extends RespondentModule {
 /**
  * Quotas cap how many participants a project accepts per demographic segment.
  */
-class QuotaModule extends RespondentModule {
+class QuotaModule {
+  readonly #client: Client
+  readonly #headers: AuthHeaders
+
+  constructor(client: Client, headers: AuthHeaders) {
+    this.#client = client
+    this.#headers = headers
+  }
+
   /** Create the quota for a project. */
   async create(
     projectId: string,
     body: PostV1ProjectsByProjectIdQuotaData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PostV1ProjectsByProjectIdQuotaResponse> {
-    const result = await this.sdk.postV1ProjectsByProjectIdQuota<true>({
+    const result = await postV1ProjectsByProjectIdQuota<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
     })
@@ -916,8 +1049,9 @@ class QuotaModule extends RespondentModule {
     projectId: string,
     options?: RespondentRequestOptions,
   ): Promise<GetV1ProjectsByProjectIdQuotaResponse> {
-    const result = await this.sdk.getV1ProjectsByProjectIdQuota<true>({
-      headers: this.headers,
+    const result = await getV1ProjectsByProjectIdQuota<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
     })
@@ -930,9 +1064,10 @@ class QuotaModule extends RespondentModule {
     body: PatchV1ProjectsByProjectIdQuotaData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PatchV1ProjectsByProjectIdQuotaResponse> {
-    const result = await this.sdk.patchV1ProjectsByProjectIdQuota<true>({
+    const result = await patchV1ProjectsByProjectIdQuota<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
     })
@@ -944,8 +1079,9 @@ class QuotaModule extends RespondentModule {
     projectId: string,
     options?: RespondentRequestOptions,
   ): Promise<DeleteV1ProjectsByProjectIdQuotaResponse> {
-    const result = await this.sdk.deleteV1ProjectsByProjectIdQuota<true>({
-      headers: this.headers,
+    const result = await deleteV1ProjectsByProjectIdQuota<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       path: { projectId },
     })
@@ -959,13 +1095,22 @@ class QuotaModule extends RespondentModule {
  *
  * @see https://developers.respondent.io/docs/Webhooks/webhooks
  */
-class WebhooksModule extends RespondentModule {
+class WebhooksModule {
+  readonly #client: Client
+  readonly #headers: AuthHeaders
+
+  constructor(client: Client, headers: AuthHeaders) {
+    this.#client = client
+    this.#headers = headers
+  }
+
   /** Retrieve the team's webhook, including its signing `privateKey`. */
   async list(
     options?: RespondentRequestOptions,
   ): Promise<GetV1WebhooksResponse> {
-    const result = await this.sdk.getV1Webhooks<true>({
-      headers: this.headers,
+    const result = await getV1Webhooks<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
     })
     return result.data
@@ -983,9 +1128,10 @@ class WebhooksModule extends RespondentModule {
     body: PostV1WebhooksData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PostV1WebhooksResponse> {
-    const result = await this.sdk.postV1Webhooks<true>({
+    const result = await postV1Webhooks<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
     })
     return result.data
@@ -996,8 +1142,9 @@ class WebhooksModule extends RespondentModule {
     webhookId: string,
     options?: RespondentRequestOptions,
   ): Promise<GetV1WebhooksByWebhookIdResponse> {
-    const result = await this.sdk.getV1WebhooksByWebhookId<true>({
-      headers: this.headers,
+    const result = await getV1WebhooksByWebhookId<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       path: { webhookId },
     })
@@ -1009,8 +1156,9 @@ class WebhooksModule extends RespondentModule {
     webhookId: string,
     options?: RespondentRequestOptions,
   ): Promise<void> {
-    await this.sdk.deleteV1WebhooksByWebhookId<true>({
-      headers: this.headers,
+    await deleteV1WebhooksByWebhookId<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       path: { webhookId },
     })
@@ -1021,8 +1169,9 @@ class WebhooksModule extends RespondentModule {
     webhookId: string,
     options?: RespondentRequestOptions,
   ): Promise<GetV1WebhooksByWebhookIdEventTypesResponse> {
-    const result = await this.sdk.getV1WebhooksByWebhookIdEventTypes<true>({
-      headers: this.headers,
+    const result = await getV1WebhooksByWebhookIdEventTypes<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       path: { webhookId },
     })
@@ -1035,9 +1184,10 @@ class WebhooksModule extends RespondentModule {
     body: PostV1WebhooksByWebhookIdSimulateData['body'],
     options?: RespondentRequestOptions,
   ): Promise<void> {
-    await this.sdk.postV1WebhooksByWebhookIdSimulate<true>({
+    await postV1WebhooksByWebhookIdSimulate<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
       path: { webhookId },
     })
@@ -1045,13 +1195,22 @@ class WebhooksModule extends RespondentModule {
 }
 
 /** Credit and incentive balances for the team. */
-class PricingModule extends RespondentModule {
+class PricingModule {
+  readonly #client: Client
+  readonly #headers: AuthHeaders
+
+  constructor(client: Client, headers: AuthHeaders) {
+    this.#client = client
+    this.#headers = headers
+  }
+
   /** View the credit and incentive balance. */
   async balanceSummary(
     options?: RespondentRequestOptions,
   ): Promise<GetV1PricingBalancesSummaryResponse> {
-    const result = await this.sdk.getV1PricingBalancesSummary<true>({
-      headers: this.headers,
+    const result = await getV1PricingBalancesSummary<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
     })
     return result.data
@@ -1059,14 +1218,23 @@ class PricingModule extends RespondentModule {
 }
 
 /** Participant profiles. */
-class ProfilesModule extends RespondentModule {
+class ProfilesModule {
+  readonly #client: Client
+  readonly #headers: AuthHeaders
+
+  constructor(client: Client, headers: AuthHeaders) {
+    this.#client = client
+    this.#headers = headers
+  }
+
   /** Retrieve a participant profile. */
   async retrieve(
     profileId: string,
     options?: RespondentRequestOptions,
   ): Promise<GetV1ProfilesByProfileIdResponse> {
-    const result = await this.sdk.getV1ProfilesByProfileId<true>({
-      headers: this.headers,
+    const result = await getV1ProfilesByProfileId<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       path: { profileId },
     })
@@ -1081,23 +1249,33 @@ class ProfilesModule extends RespondentModule {
     body: PostV1ProfilesData['body'],
     options?: RespondentRequestOptions,
   ): Promise<void> {
-    await this.sdk.postV1Profiles<true>({
+    await postV1Profiles<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
     })
   }
 }
 
 /** Past participants of the team's projects. */
-class TeamRespondentsModule extends RespondentModule {
+class TeamRespondentsModule {
+  readonly #client: Client
+  readonly #headers: AuthHeaders
+
+  constructor(client: Client, headers: AuthHeaders) {
+    this.#client = client
+    this.#headers = headers
+  }
+
   /** Search past participants. */
   async list(
     query?: GetV1TeamRespondentsData['query'],
     options?: RespondentRequestOptions,
   ): Promise<GetV1TeamRespondentsResponse> {
-    const result = await this.sdk.getV1TeamRespondents<true>({
-      headers: this.headers,
+    const result = await getV1TeamRespondents<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       ...(query ? { query } : {}),
     })
@@ -1109,13 +1287,12 @@ class TeamRespondentsModule extends RespondentModule {
     profileId: string,
     options?: RespondentRequestOptions,
   ): Promise<GetV1TeamRespondentsProfilesByProfileIdResponse> {
-    const result = await this.sdk.getV1TeamRespondentsProfilesByProfileId<true>(
-      {
-        headers: this.headers,
-        ...requestControls(options),
-        path: { profileId },
-      },
-    )
+    const result = await getV1TeamRespondentsProfilesByProfileId<true>({
+      client: this.#client,
+      headers: this.#headers,
+      ...requestControls(options),
+      path: { profileId },
+    })
     return result.data
   }
 
@@ -1124,23 +1301,33 @@ class TeamRespondentsModule extends RespondentModule {
     body: PutV1TeamRespondentsBatchInviteData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PutV1TeamRespondentsBatchInviteResponse> {
-    const result = await this.sdk.putV1TeamRespondentsBatchInvite<true>({
+    const result = await putV1TeamRespondentsBatchInvite<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
     })
     return result.data
   }
 }
 
-class ConversationsModule extends RespondentModule {
+class ConversationsModule {
+  readonly #client: Client
+  readonly #headers: AuthHeaders
+
+  constructor(client: Client, headers: AuthHeaders) {
+    this.#client = client
+    this.#headers = headers
+  }
+
   /** Retrieve all conversations. */
   async list(
     query?: GetV1MessagingConversationsData['query'],
     options?: RespondentRequestOptions,
   ): Promise<GetV1MessagingConversationsResponse> {
-    const result = await this.sdk.getV1MessagingConversations<true>({
-      headers: this.headers,
+    const result = await getV1MessagingConversations<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       ...(query ? { query } : {}),
     })
@@ -1152,9 +1339,10 @@ class ConversationsModule extends RespondentModule {
     body: PostV1MessagingConversationsData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PostV1MessagingConversationsResponse> {
-    const result = await this.sdk.postV1MessagingConversations<true>({
+    const result = await postV1MessagingConversations<true>({
+      client: this.#client,
       body,
-      headers: this.headers,
+      headers: this.#headers,
       ...requestControls(options),
     })
     return result.data
@@ -1165,12 +1353,12 @@ class ConversationsModule extends RespondentModule {
     conversationUid: string,
     options?: RespondentRequestOptions,
   ): Promise<GetV1MessagingConversationsByConversationUidResponse> {
-    const result =
-      await this.sdk.getV1MessagingConversationsByConversationUid<true>({
-        headers: this.headers,
-        ...requestControls(options),
-        path: { conversationUid },
-      })
+    const result = await getV1MessagingConversationsByConversationUid<true>({
+      client: this.#client,
+      headers: this.#headers,
+      ...requestControls(options),
+      path: { conversationUid },
+    })
     return result.data
   }
 
@@ -1180,13 +1368,13 @@ class ConversationsModule extends RespondentModule {
     body: PatchV1MessagingConversationsByConversationUidData['body'],
     options?: RespondentRequestOptions,
   ): Promise<PatchV1MessagingConversationsByConversationUidResponse> {
-    const result =
-      await this.sdk.patchV1MessagingConversationsByConversationUid<true>({
-        body,
-        headers: this.headers,
-        ...requestControls(options),
-        path: { conversationUid },
-      })
+    const result = await patchV1MessagingConversationsByConversationUid<true>({
+      client: this.#client,
+      body,
+      headers: this.#headers,
+      ...requestControls(options),
+      path: { conversationUid },
+    })
     return result.data
   }
 
@@ -1196,8 +1384,9 @@ class ConversationsModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PatchV1MessagingConversationsByConversationUidReadResponse> {
     const result =
-      await this.sdk.patchV1MessagingConversationsByConversationUidRead<true>({
-        headers: this.headers,
+      await patchV1MessagingConversationsByConversationUidRead<true>({
+        client: this.#client,
+        headers: this.#headers,
         ...requestControls(options),
         path: { conversationUid },
       })
@@ -1210,14 +1399,13 @@ class ConversationsModule extends RespondentModule {
     body: PostV1MessagingConversationsByConversationUidParticipantsData['body'],
     options?: RespondentRequestOptions,
   ): Promise<void> {
-    await this.sdk.postV1MessagingConversationsByConversationUidParticipants<true>(
-      {
-        body,
-        headers: this.headers,
-        ...requestControls(options),
-        path: { conversationUid },
-      },
-    )
+    await postV1MessagingConversationsByConversationUidParticipants<true>({
+      client: this.#client,
+      body,
+      headers: this.#headers,
+      ...requestControls(options),
+      path: { conversationUid },
+    })
   }
 
   /** Remove a participant from a conversation. */
@@ -1227,9 +1415,10 @@ class ConversationsModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<DeleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdResponse> {
     const result =
-      await this.sdk.deleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserId<true>(
+      await deleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserId<true>(
         {
-          headers: this.headers,
+          client: this.#client,
+          headers: this.#headers,
           ...requestControls(options),
           path: { conversationUid, participantUserId },
         },
@@ -1238,14 +1427,23 @@ class ConversationsModule extends RespondentModule {
   }
 }
 
-class MessagesModule extends RespondentModule {
+class MessagesModule {
+  readonly #client: Client
+  readonly #headers: AuthHeaders
+
+  constructor(client: Client, headers: AuthHeaders) {
+    this.#client = client
+    this.#headers = headers
+  }
+
   /** Retrieve all messages. */
   async list(
     query?: GetV1MessagingMessagesData['query'],
     options?: RespondentRequestOptions,
   ): Promise<GetV1MessagingMessagesResponse> {
-    const result = await this.sdk.getV1MessagingMessages<true>({
-      headers: this.headers,
+    const result = await getV1MessagingMessages<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       ...(query ? { query } : {}),
     })
@@ -1257,8 +1455,9 @@ class MessagesModule extends RespondentModule {
     messageUid: string,
     options?: RespondentRequestOptions,
   ): Promise<GetV1MessagingMessagesByMessageUidResponse> {
-    const result = await this.sdk.getV1MessagingMessagesByMessageUid<true>({
-      headers: this.headers,
+    const result = await getV1MessagingMessagesByMessageUid<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       path: { messageUid },
     })
@@ -1270,8 +1469,9 @@ class MessagesModule extends RespondentModule {
     query?: GetV1MessagingMessagesInboxData['query'],
     options?: RespondentRequestOptions,
   ): Promise<GetV1MessagingMessagesInboxResponse> {
-    const result = await this.sdk.getV1MessagingMessagesInbox<true>({
-      headers: this.headers,
+    const result = await getV1MessagingMessagesInbox<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       ...(query ? { query } : {}),
     })
@@ -1285,14 +1485,13 @@ class MessagesModule extends RespondentModule {
     options?: RespondentRequestOptions,
   ): Promise<PostV1MessagingConversationsByConversationUidMessagesResponse> {
     const result =
-      await this.sdk.postV1MessagingConversationsByConversationUidMessages<true>(
-        {
-          body,
-          headers: this.headers,
-          ...requestControls(options),
-          path: { conversationUid },
-        },
-      )
+      await postV1MessagingConversationsByConversationUidMessages<true>({
+        client: this.#client,
+        body,
+        headers: this.#headers,
+        ...requestControls(options),
+        path: { conversationUid },
+      })
     return result.data
   }
 }
@@ -1301,14 +1500,13 @@ class MessagesModule extends RespondentModule {
  * Messaging with participants. `MESSAGES.CREATED` and `CONVERSATIONS.CREATED`
  * webhooks fire only for participant-sent messages, never researcher-sent ones.
  */
-class MessagingModule extends RespondentModule {
+class MessagingModule {
   public readonly conversations: ConversationsModule
   public readonly messages: MessagesModule
 
-  constructor(sdk: GeneratedRespondentSdk, headers: AuthHeaders) {
-    super(sdk, headers)
-    this.conversations = new ConversationsModule(sdk, headers)
-    this.messages = new MessagesModule(sdk, headers)
+  constructor(client: Client, headers: AuthHeaders) {
+    this.conversations = new ConversationsModule(client, headers)
+    this.messages = new MessagesModule(client, headers)
   }
 
   /** Retrieve all conversations. */
@@ -1360,14 +1558,23 @@ class MessagingModule extends RespondentModule {
  * staging and production, so resolve them at runtime per environment instead of
  * hardcoding them.
  */
-class LookupsModule extends RespondentModule {
+class LookupsModule {
+  readonly #client: Client
+  readonly #headers: AuthHeaders
+
+  constructor(client: Client, headers: AuthHeaders) {
+    this.#client = client
+    this.#headers = headers
+  }
+
   /** Retrieve lookup values for the requested groups. */
   async values(
     query: GetV1LookupsData['query'],
     options?: RespondentRequestOptions,
   ): Promise<GetV1LookupsResponse> {
-    const result = await this.sdk.getV1Lookups<true>({
-      headers: this.headers,
+    const result = await getV1Lookups<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       query,
     })
@@ -1379,8 +1586,9 @@ class LookupsModule extends RespondentModule {
     query?: GetV1IndustriesData['query'],
     options?: RespondentRequestOptions,
   ): Promise<GetV1IndustriesResponse> {
-    const result = await this.sdk.getV1Industries<true>({
-      headers: this.headers,
+    const result = await getV1Industries<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       ...(query ? { query } : {}),
     })
@@ -1392,8 +1600,9 @@ class LookupsModule extends RespondentModule {
     query?: GetV1JobTitlesData['query'],
     options?: RespondentRequestOptions,
   ): Promise<GetV1JobTitlesResponse> {
-    const result = await this.sdk.getV1JobTitles<true>({
-      headers: this.headers,
+    const result = await getV1JobTitles<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       ...(query ? { query } : {}),
     })
@@ -1405,8 +1614,9 @@ class LookupsModule extends RespondentModule {
     query?: GetV1SkillsData['query'],
     options?: RespondentRequestOptions,
   ): Promise<GetV1SkillsResponse> {
-    const result = await this.sdk.getV1Skills<true>({
-      headers: this.headers,
+    const result = await getV1Skills<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       ...(query ? { query } : {}),
     })
@@ -1418,8 +1628,9 @@ class LookupsModule extends RespondentModule {
     query?: GetV1TopicsData['query'],
     options?: RespondentRequestOptions,
   ): Promise<GetV1TopicsResponse> {
-    const result = await this.sdk.getV1Topics<true>({
-      headers: this.headers,
+    const result = await getV1Topics<true>({
+      client: this.#client,
+      headers: this.#headers,
       ...requestControls(options),
       ...(query ? { query } : {}),
     })
@@ -1473,7 +1684,6 @@ const bufferResponseBody = async (response: Response): Promise<Response> => {
  * helper returns the typed response body.
  */
 export class RespondentSdk {
-  readonly #sdk: GeneratedRespondentSdk
   public readonly projects: ProjectsModule
   public readonly screenerQuestions: ScreenerQuestionsModule
   public readonly screenerResponses: ScreenerResponsesModule
@@ -1493,12 +1703,22 @@ export class RespondentSdk {
       throw new Error('RespondentSdk timeoutMs must be a positive number')
     }
 
+    if (timeoutMs !== undefined && timeoutMs > MAX_TIMEOUT_MS) {
+      throw new Error(
+        `RespondentSdk timeoutMs must be at most ${String(MAX_TIMEOUT_MS)}ms (about 24.8 days); setTimeout clamps a longer delay to 1ms, which would abort every request immediately`,
+      )
+    }
+
     // One object, shared by reference with every module, never stored on an
     // enumerable property.
     const authHeaders: AuthHeaders = {
       [API_KEY_HEADER_NAME]: apiKey,
       [API_SECRET_HEADER_NAME]: apiSecret,
     }
+
+    // Everything the SERVER writes is scrubbed of these before it goes on an
+    // error. Held only by the interceptor closure below, like `authHeaders`.
+    const credentials = { apiKey, apiSecret }
 
     const clientInstance = createClient({
       baseUrl: baseUrl ?? RESPONDENT_PRODUCTION_BASE_URL,
@@ -1597,29 +1817,43 @@ export class RespondentSdk {
         // 200, for example. The status is not the failure, so this must not
         // look like an API error.
         return new RespondentSdkResponseError({
-          response,
+          status: response.status,
+          statusText: redactCredentials(response.statusText, credentials),
+          responseHeaders: summarizeResponseHeaders(response, credentials),
           request: summary,
           cause: error,
         })
       }
 
+      // `message`, `code` and `detail` are read back out of the payload by
+      // `RespondentSdkApiError`, so scrubbing the payload covers them too.
       return new RespondentSdkApiError({
-        payload: error,
-        response,
+        payload: redactPayload(error, credentials),
+        status: response.status,
+        statusText: redactCredentials(response.statusText, credentials),
+        responseHeaders: summarizeResponseHeaders(response, credentials),
         request: summary,
       })
     })
 
-    this.#sdk = new GeneratedRespondentSdk({ client: clientInstance })
-    this.projects = new ProjectsModule(this.#sdk, authHeaders)
-    this.screenerQuestions = new ScreenerQuestionsModule(this.#sdk, authHeaders)
-    this.screenerResponses = new ScreenerResponsesModule(this.#sdk, authHeaders)
-    this.quota = new QuotaModule(this.#sdk, authHeaders)
-    this.webhooks = new WebhooksModule(this.#sdk, authHeaders)
-    this.pricing = new PricingModule(this.#sdk, authHeaders)
-    this.profiles = new ProfilesModule(this.#sdk, authHeaders)
-    this.teamRespondents = new TeamRespondentsModule(this.#sdk, authHeaders)
-    this.messaging = new MessagingModule(this.#sdk, authHeaders)
-    this.lookups = new LookupsModule(this.#sdk, authHeaders)
+    this.projects = new ProjectsModule(clientInstance, authHeaders)
+    this.screenerQuestions = new ScreenerQuestionsModule(
+      clientInstance,
+      authHeaders,
+    )
+    this.screenerResponses = new ScreenerResponsesModule(
+      clientInstance,
+      authHeaders,
+    )
+    this.quota = new QuotaModule(clientInstance, authHeaders)
+    this.webhooks = new WebhooksModule(clientInstance, authHeaders)
+    this.pricing = new PricingModule(clientInstance, authHeaders)
+    this.profiles = new ProfilesModule(clientInstance, authHeaders)
+    this.teamRespondents = new TeamRespondentsModule(
+      clientInstance,
+      authHeaders,
+    )
+    this.messaging = new MessagingModule(clientInstance, authHeaders)
+    this.lookups = new LookupsModule(clientInstance, authHeaders)
   }
 }

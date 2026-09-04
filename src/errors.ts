@@ -4,6 +4,63 @@
 export const REDACTED_HEADER_VALUE = '[redacted]'
 
 /**
+ * The two values that must never appear on an error.
+ */
+export type RespondentCredentials = {
+  apiKey: string
+  apiSecret: string
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+const replaceCredential = (value: string, credential: string): string =>
+  credential.length === 0
+    ? value
+    : value.split(credential).join(REDACTED_HEADER_VALUE)
+
+/**
+ * Server-controlled text with both credentials replaced by `[redacted]`: a
+ * plain string replace of the exact API key and the exact API secret. Nothing
+ * between this process and the Partner API is under our control, and a gateway
+ * that reflects either credential back would otherwise put it on an ordinary,
+ * loggable error.
+ */
+export const redactCredentials = (
+  value: string,
+  { apiKey, apiSecret }: RespondentCredentials,
+): string => {
+  // Longest first: if one credential contains the other, replacing the shorter
+  // one first would leave a fragment of the longer one behind.
+  const [first, second] =
+    apiKey.length >= apiSecret.length
+      ? [apiKey, apiSecret]
+      : [apiSecret, apiKey]
+  return replaceCredential(replaceCredential(value, first), second)
+}
+
+/**
+ * The decoded error body with both credentials replaced, scrubbed as JSON text
+ * and parsed back. A payload that cannot round-trip through JSON is dropped.
+ */
+export const redactPayload = (
+  payload: unknown,
+  credentials: RespondentCredentials,
+): unknown => {
+  if (payload === undefined) {
+    return undefined
+  }
+  try {
+    const scrubbed: unknown = JSON.parse(
+      redactCredentials(JSON.stringify(payload), credentials),
+    )
+    return scrubbed
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Header names whose values never appear on an error. `x-api-key` and
  * `x-api-secret` are the Partner API credentials; the rest are here so a proxy
  * or a future auth scheme cannot leak through this path either.
@@ -22,7 +79,10 @@ const REDACTED_HEADER_NAMES: readonly string[] = [
  *
  * This is deliberately not the `Request` object: a `Request` carries the API
  * credentials in its headers, so logging one — or serialising an error that
- * holds one — would print them.
+ * holds one — would print them. Errors do not carry the `Response` either: its
+ * headers are written by the server, names as well as values, so an allow-list
+ * of names with the values scrubbed is the only form of them that is safe to
+ * keep.
  */
 export type RespondentRequestSummary = {
   /** Absolute request URL, including the query string. */
@@ -53,8 +113,50 @@ export const summarizeRequest = (
   return { url: request.url, method: request.method, headers }
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
+/**
+ * Response header names whose value may be reproduced on an error: backoff,
+ * rate limits, body framing, the server date and request identifiers. A
+ * response header is server-controlled in its name as well as its value, so a
+ * name outside this list is dropped along with its value, and a value that is
+ * kept is passed through {@link redactCredentials} first.
+ */
+const REPRODUCIBLE_RESPONSE_HEADER_NAMES: readonly string[] = [
+  'retry-after',
+  'ratelimit',
+  'ratelimit-limit',
+  'ratelimit-policy',
+  'ratelimit-remaining',
+  'ratelimit-reset',
+  'x-ratelimit-limit',
+  'x-ratelimit-remaining',
+  'x-ratelimit-reset',
+  'content-type',
+  'date',
+  'correlation-id',
+  'request-id',
+  'traceparent',
+  'x-correlation-id',
+  'x-request-id',
+  'x-trace-id',
+]
+
+/**
+ * Response headers, reduced to the allow-listed names with their values
+ * scrubbed. Every other header — name included — is dropped.
+ */
+export const summarizeResponseHeaders = (
+  response: Response,
+  credentials: RespondentCredentials,
+): Record<string, string> => {
+  const summarized: Record<string, string> = {}
+  response.headers.forEach((value, name) => {
+    const lowercased = name.toLowerCase()
+    if (REPRODUCIBLE_RESPONSE_HEADER_NAMES.includes(lowercased)) {
+      summarized[lowercased] = redactCredentials(value, credentials)
+    }
+  })
+  return summarized
+}
 
 const toNonEmptyString = (value: unknown): string | undefined => {
   if (typeof value !== 'string') {
@@ -72,7 +174,11 @@ const toNonEmptyString = (value: unknown): string | undefined => {
  *
  * @see https://developers.respondent.io/screener-responses/trigger-manual-payout
  */
-const extractMessage = (payload: unknown, response: Response): string => {
+const extractMessage = (
+  payload: unknown,
+  status: number,
+  statusText: string,
+): string => {
   const stringPayload = toNonEmptyString(payload)
   if (stringPayload) {
     return stringPayload
@@ -87,12 +193,9 @@ const extractMessage = (payload: unknown, response: Response): string => {
     }
   }
 
-  const parts = [
-    'Respondent request failed',
-    `with status ${String(response.status)}`,
-  ]
-  if (response.statusText) {
-    parts.push(`(${response.statusText})`)
+  const parts = ['Respondent request failed', `with status ${String(status)}`]
+  if (statusText) {
+    parts.push(`(${statusText})`)
   }
   return parts.join(' ')
 }
@@ -163,10 +266,20 @@ export const isRespondentSdkError = (
 
 export type RespondentSdkApiErrorOptions<TPayload = unknown> =
   RespondentSdkErrorOptions & {
-    /** The decoded error body, or the raw text when it was not JSON. */
+    /**
+     * The decoded error body, or the raw text when it was not JSON, already
+     * scrubbed of the credentials.
+     */
     payload: TPayload
-    /** The non-2xx response. */
-    response: Response
+    /** HTTP status code the API answered with. */
+    status: number
+    /** HTTP status text, already scrubbed of the credentials. */
+    statusText: string
+    /**
+     * Response headers, reduced to the allow-listed names with their values
+     * scrubbed. See {@link summarizeResponseHeaders}.
+     */
+    responseHeaders: Record<string, string>
   }
 
 /**
@@ -180,18 +293,19 @@ export class RespondentSdkApiError<
   public readonly statusText: string
   /** The decoded error body, or the raw text when it was not JSON. */
   public readonly payload: TPayload
-  public readonly response: Response
+  /** Response headers, reduced to the allow-listed names. */
+  public readonly responseHeaders: Record<string, string>
   public readonly code?: string
   public readonly detail?: string
 
   constructor(options: RespondentSdkApiErrorOptions<TPayload>) {
-    const { payload, response } = options
-    super(extractMessage(payload, response), options)
+    const { payload, status, statusText, responseHeaders } = options
+    super(extractMessage(payload, status, statusText), options)
     this.name = 'RespondentSdkApiError'
-    this.status = response.status
-    this.statusText = response.statusText
+    this.status = status
+    this.statusText = statusText
     this.payload = payload
-    this.response = response
+    this.responseHeaders = responseHeaders
 
     const structured = extractStructuredFields(payload)
     this.code = structured.code
@@ -233,8 +347,16 @@ export const isRespondentSdkTransportError = (
   error instanceof RespondentSdkTransportError
 
 export type RespondentSdkResponseErrorOptions = RespondentSdkErrorOptions & {
-  /** The successful response whose body could not be decoded. */
-  response: Response
+  /** Status of the successful response whose body could not be decoded. */
+  status: number
+  /** HTTP status text, already scrubbed of the credentials. */
+  statusText: string
+  /**
+   * Response headers, reduced to the allow-listed names with their values
+   * scrubbed. `content-type` is on that list, and it is usually what explains
+   * the decoding failure.
+   */
+  responseHeaders: Record<string, string>
 }
 
 /**
@@ -245,17 +367,20 @@ export type RespondentSdkResponseErrorOptions = RespondentSdkErrorOptions & {
 export class RespondentSdkResponseError extends RespondentSdkError {
   /** HTTP status code of the undecodable response. */
   public readonly status: number
-  public readonly response: Response
+  /** HTTP status text of the undecodable response. */
+  public readonly statusText: string
+  /** Response headers, reduced to the allow-listed names. */
+  public readonly responseHeaders: Record<string, string>
 
   constructor(options: RespondentSdkResponseErrorOptions) {
-    const { response } = options
     super(
-      `Respondent returned a ${String(response.status)} response whose body could not be decoded`,
+      `Respondent returned a ${String(options.status)} response whose body could not be decoded`,
       options,
     )
     this.name = 'RespondentSdkResponseError'
-    this.status = response.status
-    this.response = response
+    this.status = options.status
+    this.statusText = options.statusText
+    this.responseHeaders = options.responseHeaders
     Error.captureStackTrace(this, RespondentSdkResponseError)
   }
 }

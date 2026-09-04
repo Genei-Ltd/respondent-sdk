@@ -35,6 +35,22 @@ const RAW_BODY = JSON.stringify(EVENT)
 const sign = (body: string, algorithm = 'sha256', key = PRIVATE_KEY) =>
   `${algorithm}=${createHmac(algorithm, key).update(body).digest('base64')}`
 
+const signBytes = (bytes: Uint8Array, key = PRIVATE_KEY) =>
+  `sha256=${createHmac('sha256', key).update(bytes).digest('base64')}`
+
+/**
+ * A valid webhook event whose bytes hold a lone 0xFF, which is not a valid
+ * UTF-8 sequence. A lenient decode turns it into U+FFFD and leaves JSON that
+ * parses into a storable event the provider never sent.
+ */
+const INVALID_UTF8_BODY = Buffer.concat([
+  Buffer.from(
+    '{"event":"SCREENER_RESPONSES.CREATED","uuid":"utf8-probe","created":"2026-01-08T23:09:08.239Z","payload":{"note":"',
+  ),
+  Buffer.from([0xff]),
+  Buffer.from('"}}'),
+])
+
 const digestOf = (body: string, key = PRIVATE_KEY) =>
   createHmac('sha256', key).update(body).digest('base64')
 
@@ -368,6 +384,49 @@ describe('verifyAndDedupeWebhook', () => {
 
     expect(outcome.status).toBe('malformed_body')
     expect(store.claimAndStore).not.toHaveBeenCalled()
+  })
+
+  it('reports invalid UTF-8 as a malformed body, without substituting', async () => {
+    const store = inbox()
+
+    const outcome = await verifyAndDedupeWebhook({
+      rawBody: INVALID_UTF8_BODY,
+      // Signed over the bytes, so the signature check passes and the encoding
+      // is the only thing that can reject this delivery.
+      signatureHeader: signBytes(INVALID_UTF8_BODY),
+      privateKey: PRIVATE_KEY,
+      claimAndStore: store.claimAndStore,
+    })
+
+    expect(outcome.status).toBe('malformed_body')
+    if (outcome.status !== 'malformed_body') {
+      throw new Error('expected a malformed body')
+    }
+    expect(String(outcome.cause)).toContain('UTF-8')
+    // Nothing was stored, so a lenient decode cannot have slipped a repaired
+    // event past the inbox.
+    expect(store.claimAndStore).not.toHaveBeenCalled()
+    expect(store.rows.size).toBe(0)
+  })
+
+  it('stores a valid multi-byte body unchanged', async () => {
+    // The other half of the fatal decode: valid UTF-8 must still round-trip,
+    // multi-byte characters included.
+    const store = inbox()
+    const event = {
+      ...EVENT,
+      payload: { resource: { note: 'café — naïve 😀' } },
+    }
+    const bytes = Buffer.from(JSON.stringify(event), 'utf-8')
+
+    const outcome = await verifyAndDedupeWebhook({
+      rawBody: bytes,
+      signatureHeader: signBytes(bytes),
+      privateKey: PRIVATE_KEY,
+      claimAndStore: store.claimAndStore,
+    })
+
+    expect(outcome).toEqual({ status: 'stored', uuid: EVENT.uuid, event })
   })
 
   it('does not lose the work when processing the stored event throws', async () => {

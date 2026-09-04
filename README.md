@@ -138,9 +138,23 @@ Every request carries two headers, `x-api-key` (Client ID) and `x-api-secret`
 not self-serve, and production access requires a reviewed staging demo and a
 signed MSA. There is no OAuth flow and no documented scope model.
 
-The credentials are held in `#private` fields, so logging or serialising a
-`RespondentSdk` instance cannot print them, and errors carry a redacted request
-summary rather than the `Request` object.
+The credentials and the configured client are held in `#private` fields, and no
+accessor exposes them, so logging or serialising a `RespondentSdk` instance
+cannot print them, and errors carry a redacted request summary rather than the
+`Request` object. Nothing exported from the package
+reaches the configured client either: the generated operations are plain
+functions that take a client as an argument, so there is no class holding a
+registry of the clients ever constructed.
+
+Server-controlled text is scrubbed as well. Response headers are reduced to a
+short allow-list of names — a header NAME is server-controlled too, so one that
+is not on the list is dropped along with its value — and the surviving values,
+along with `statusText` and the payload, have any occurrence of the key or the
+secret replaced with `[redacted]`. The message, code and detail are read back
+out of the scrubbed payload, so they are covered too. A gateway that reflects
+`x-api-key` back in `X-Request-Id`, or quotes it in an error message, or answers
+with a header named after it, cannot put it on an error. `cause` is the
+underlying error, attached unchanged.
 
 The SDK also sets `redirect: 'error'`. Node forwards custom headers across an
 origin-changing redirect — unlike `Authorization` — so following a redirect
@@ -152,19 +166,24 @@ redirected request fails with a `RespondentSdkTransportError` instead.
 Every SDK-originated failure raises a subclass of `RespondentSdkError`, so the
 failure modes are distinguishable:
 
-| Error                         | Raised when                                                              | `cause`                    |
-| ----------------------------- | ------------------------------------------------------------------------ | -------------------------- |
-| `RespondentSdkApiError`       | the API answered with a non-2xx status (`status`, `payload`, `response`) | none — read `payload`      |
-| `RespondentSdkTransportError` | no response arrived — DNS, connection reset, or a refused redirect       | the underlying fetch error |
-| `RespondentSdkResponseError`  | a success status whose body could not be decoded (invalid JSON on a 200) | the `SyntaxError`          |
-| `RespondentSdkTimeoutError`   | the configured `timeoutMs` elapsed                                       | none — read `timeoutMs`    |
+| Error                         | Raised when                                                                                                     | `cause`                    |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `RespondentSdkApiError`       | the API answered with a non-2xx status (`status`, `statusText`, `payload`, `responseHeaders`, `code`, `detail`) | none — read `payload`      |
+| `RespondentSdkTransportError` | no response arrived — DNS, connection reset, or a refused redirect                                              | the underlying fetch error |
+| `RespondentSdkResponseError`  | a success status whose body could not be decoded (`status`, `statusText`, `responseHeaders`)                    | the `SyntaxError`          |
+| `RespondentSdkTimeoutError`   | the configured `timeoutMs` elapsed (`timeoutMs`)                                                                | none — read `timeoutMs`    |
 
 One failure is deliberately not an SDK error: when you abort a call through your
 own `AbortSignal`, it rejects with your `signal.reason` exactly as you set it.
 
 Each SDK error carries a redacted request summary on `request` (`url`, `method`,
 and headers with `x-api-key` / `x-api-secret` replaced by `[redacted]`), and
-carries `cause` only where an underlying error exists.
+carries `cause` only where an underlying error exists. No error carries the
+`Response`: `RespondentSdkApiError` and `RespondentSdkResponseError` expose
+`status`, `statusText` and a `responseHeaders` map instead. That map holds only
+the allow-listed headers — `retry-after`, the rate-limit headers,
+`content-type`, `date` and the request-id headers — with their values scrubbed;
+every other header is dropped, name included.
 `isRespondentSdkError` matches any of them; `isRespondentSdkApiError`,
 `isRespondentSdkTransportError`, `isRespondentSdkResponseError` and
 `isRespondentSdkTimeoutError` narrow.
@@ -205,7 +224,11 @@ response body and any `Retry-After` header are undocumented.
 Set `timeoutMs` to abort requests that exceed a duration. The deadline covers
 reading the response body, not just receiving the response headers, so a server
 that answers and then stalls still trips it. The SDK rejects with a
-`RespondentSdkTimeoutError`, which you can treat as retryable:
+`RespondentSdkTimeoutError`, which you can treat as retryable.
+
+It must be a positive number of at most `2_147_483_647` (about 24.8 days), and
+the constructor throws otherwise. `setTimeout` wraps a longer delay round to
+1ms, so a very long deadline would abort every request almost immediately.
 
 ```ts
 import {
@@ -296,6 +319,10 @@ The order matters: verify the bytes, store the event and claim its id in one
 atomic step, answer 2xx, and only then do the work — reading it back from the
 stored record.
 
+The invariant that makes this durable: a stored row stays pending until the work
+succeeds, and the only thing that starts the work is a poll over pending rows,
+so nothing outside the claiming transaction can strand a delivery.
+
 ```ts
 import type { UnknownWebhookEvent } from '@coloop-ai/respondent-sdk/webhooks'
 import {
@@ -325,8 +352,10 @@ async function claimAndStore(
 }
 
 export async function handleWebhook(request: Request) {
-  // Read the RAW body, before any JSON parsing.
-  const rawBody = await request.text()
+  // Read the RAW BYTES, before any JSON parsing. Not `request.text()`: that
+  // decodes leniently, so it has already replaced invalid UTF-8 with U+FFFD
+  // before the SDK can reject the body.
+  const rawBody = new Uint8Array(await request.arrayBuffer())
 
   const outcome = await verifyAndDedupeWebhook({
     rawBody,
@@ -339,9 +368,10 @@ export async function handleWebhook(request: Request) {
     return new Response('Forbidden', { status: 403 })
   }
   if (outcome.status === 'stored') {
-    // The event is on disk. Wake a worker and answer straight away: you have
-    // three seconds, and the business work does not belong in this request.
-    await enqueueWebhookWork(outcome.uuid)
+    // A nudge, not the trigger. The row is already pending on disk and the
+    // poll below picks it up regardless, so a failed wake-up strands nothing —
+    // which is why its failure is swallowed rather than answered non-2xx.
+    await wakeWebhookWorker().catch(() => {})
   }
   // A duplicate or an unparseable body is 2xx too: the provider retries
   // anything else, and a replay must not do the work twice.
@@ -349,9 +379,25 @@ export async function handleWebhook(request: Request) {
 }
 ```
 
-The work runs from the stored record, with its own retries:
+The work is started by a poll over the rows that are still pending, so it never
+depends on the wake-up call above having succeeded:
 
 ```ts
+// Run this on a schedule, and on each wake-up.
+async function drainPendingDeliveries() {
+  const pending = await db
+    .selectFrom('respondent_webhook_inbox')
+    .select(['uuid'])
+    .where('processedAt', 'is', null)
+    .orderBy('receivedAt')
+    .limit(100)
+    .execute()
+
+  for (const row of pending) {
+    await processStoredDelivery(row.uuid)
+  }
+}
+
 async function processStoredDelivery(uuid: string) {
   const row = await db
     .selectFrom('respondent_webhook_inbox')
@@ -396,6 +442,21 @@ delivery gets lost: the `uuid` is already claimed, so when the work throws, the
 provider's retry comes back as a duplicate and the work never happens. Storing
 the event first makes that retry unnecessary — the record is on disk, and a
 throw leaves it pending for the next attempt.
+
+Enqueueing after `claimAndStore` returns fails the same way when the enqueue is
+the only trigger: the row commits, the enqueue throws, the provider's retry
+reads as a duplicate, and nothing ever runs the work. Either write the job
+inside the same transaction as the inbox row, or — as above — poll the pending
+rows and treat the enqueue as an optimisation.
+
+A `Uint8Array` body is decoded with fatal UTF-8 validation once the signature
+has verified, so a body that is not valid UTF-8 comes back as `malformed_body`
+rather than being repaired. The lenient decoder substitutes U+FFFD for an
+invalid sequence, `JSON.parse` accepts the repaired text, and the event you
+would then store is one the provider never sent. That check only works on bytes:
+pass `new Uint8Array(await request.arrayBuffer())`, because `await
+request.text()` has already done the lenient decode for you and a `string`
+`rawBody` is taken as it arrives.
 
 Verify by hand instead if you do not want the replay check:
 `verifyWebhookSignatureFromRawBody` hashes the wire bytes, and
@@ -475,11 +536,13 @@ and `zod@4`.
 
 ## Generated client access
 
-If you need full control over request options, work with the generated client
-directly:
+If you need full control over request options, call a generated operation
+directly. Each one is a plain function that takes the client you configured;
+there is no generated class, and so nothing that keeps a registry of configured
+clients:
 
 ```ts
-import { GeneratedRespondentSdk, sdk } from '@coloop-ai/respondent-sdk'
+import { getV1Projects, sdk } from '@coloop-ai/respondent-sdk'
 
 const client = sdk.createClient({
   baseUrl: 'https://api.respondent.io',
@@ -490,8 +553,8 @@ const client = sdk.createClient({
   responseStyle: 'data',
 })
 
-const raw = new GeneratedRespondentSdk({ client })
-const response = await raw.getV1Projects({
+const response = await getV1Projects({
+  client,
   headers: {
     'x-api-key': process.env.RESPONDENT_API_KEY!,
     'x-api-secret': process.env.RESPONDENT_API_SECRET!,

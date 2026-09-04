@@ -19,10 +19,15 @@ export default defineConfig({
       client: '@hey-api/client-fetch',
       name: '@hey-api/sdk',
       operations: {
-        containerName: 'GeneratedRespondentSdk',
-        methods: 'instance',
+        // Flat functions, not an instance class. The class strategies emit a
+        // public static registry of every instance ever constructed, and each
+        // instance holds its configured client, so reading
+        // `client.getConfig().headers` off a registered instance hands any
+        // caller `x-api-key` and `x-api-secret` in plain text. Flat functions
+        // take the client as an argument, so the configured one never leaves a
+        // `#private` field.
         nesting: 'id',
-        strategy: 'single',
+        strategy: 'flat',
       },
     },
     {

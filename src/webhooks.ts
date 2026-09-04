@@ -202,7 +202,12 @@ export type VerifyWebhookSignatureFromRawBodyOptions =
   VerifyWebhookSignatureOptions & {
     /**
      * The delivered body exactly as it arrived on the wire, before any JSON
-     * parsing — `await request.text()`, or the raw request bytes.
+     * parsing — `new Uint8Array(await request.arrayBuffer())`.
+     *
+     * Prefer the bytes over `await request.text()`: `text()` decodes
+     * leniently, so it has already replaced any invalid UTF-8 sequence with
+     * U+FFFD by the time this SDK sees the body, and invalid UTF-8 can only be
+     * detected from the bytes.
      */
     rawBody: string | Uint8Array
   }
@@ -549,15 +554,44 @@ export type WebhookDeliveryOutcome =
       event: UnknownWebhookEvent
     }
   | { status: 'invalid_signature' }
-  | { status: 'malformed_body'; cause: unknown }
+  | {
+      /**
+       * The signature verified, but the body is not an event this SDK can
+       * read: not valid UTF-8, not valid JSON, or not a webhook event shape.
+       */
+      status: 'malformed_body'
+      cause: unknown
+    }
   | {
       /** The signature was valid but this `uuid` was already stored. */
       status: 'duplicate'
       uuid: string
     }
 
-const decodeRawBody = (rawBody: string | Uint8Array): string =>
-  typeof rawBody === 'string' ? rawBody : new TextDecoder().decode(rawBody)
+/**
+ * `fatal`, so an invalid sequence throws instead of becoming U+FFFD.
+ *
+ * The lenient decoder substitutes the replacement character, `JSON.parse` then
+ * accepts the repaired text, and the event handed to `claimAndStore` is one the
+ * provider never sent. A delivery whose signature verifies is valid UTF-8, so
+ * anything else is a corrupted body.
+ */
+const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
+
+const decodeRawBody = (rawBody: string | Uint8Array): string => {
+  if (typeof rawBody === 'string') {
+    return rawBody
+  }
+  try {
+    return UTF8_DECODER.decode(rawBody)
+  } catch {
+    // Caught by the `JSON.parse` guard in `verifyAndDedupeWebhook`, which
+    // reports it as `malformed_body` with this error as the cause.
+    throw new TypeError(
+      'Webhook body is not valid UTF-8, so it cannot be the JSON that was signed',
+    )
+  }
+}
 
 export type VerifyAndDedupeWebhookOptions =
   VerifyWebhookSignatureFromRawBodyOptions & {
@@ -603,6 +637,8 @@ export const verifyAndDedupeWebhook = async ({
     return { status: 'invalid_signature' }
   }
 
+  // Decoding is inside the guard: a body that is not valid UTF-8 is a malformed
+  // body, exactly like one that is not valid JSON.
   let body: unknown
   try {
     body = JSON.parse(decodeRawBody(options.rawBody))

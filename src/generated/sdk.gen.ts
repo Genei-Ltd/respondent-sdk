@@ -18,1055 +18,867 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
 
-class HeyApiClient {
-    protected client: Client;
-    
-    constructor(args?: {
-        client?: Client;
-    }) {
-        this.client = args?.client ?? client;
-    }
-}
+/**
+ * Retrieve industry list
+ *
+ * Get all industries
+ */
+export const getV1Industries = <ThrowOnError extends boolean = false>(options: Options<GetV1IndustriesData, ThrowOnError>): RequestResult<GetV1IndustriesResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1IndustriesResponses, unknown, ThrowOnError>({ url: '/v1/industries', ...options });
 
-class HeyApiRegistry<T> {
-    private readonly defaultKey = 'default';
-    
-    private readonly instances: Map<string, T> = new Map();
-    
-    get(key?: string): T {
-        const instance = this.instances.get(key ?? this.defaultKey);
-        if (!instance) {
-            throw new Error(`No SDK client found. Create one with "new GeneratedRespondentSdk()" to fix this error.`);
-        }
-        return instance;
-    }
-    
-    set(value: T, key?: string): void {
-        this.instances.set(key ?? this.defaultKey, value);
-    }
-}
+/**
+ * Retrieve job title list
+ *
+ * Find all job titles paginated
+ *
+ * To get all job titles, run `/v1/job-titles?pageSize=50000&page=1`
+ */
+export const getV1JobTitles = <ThrowOnError extends boolean = false>(options: Options<GetV1JobTitlesData, ThrowOnError>): RequestResult<GetV1JobTitlesResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1JobTitlesResponses, unknown, ThrowOnError>({ url: '/v1/job-titles', ...options });
 
-export class GeneratedRespondentSdk extends HeyApiClient {
-    public static readonly __registry: HeyApiRegistry<GeneratedRespondentSdk> = new HeyApiRegistry<GeneratedRespondentSdk>();
-    
-    constructor(args?: {
-        client?: Client;
-        key?: string;
-    }) {
-        super(args);
-        GeneratedRespondentSdk.__registry.set(this, args?.key);
-    }
-    
-    /**
-     * Retrieve industry list
-     *
-     * Get all industries
-     */
-    public getV1Industries<ThrowOnError extends boolean = false>(options: Options<GetV1IndustriesData, ThrowOnError>): RequestResult<GetV1IndustriesResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1IndustriesResponses, unknown, ThrowOnError>({ url: '/v1/industries', ...options });
-    }
-    
-    /**
-     * Retrieve job title list
-     *
-     * Find all job titles paginated
-     *
-     * To get all job titles, run `/v1/job-titles?pageSize=50000&page=1`
-     */
-    public getV1JobTitles<ThrowOnError extends boolean = false>(options: Options<GetV1JobTitlesData, ThrowOnError>): RequestResult<GetV1JobTitlesResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1JobTitlesResponses, unknown, ThrowOnError>({ url: '/v1/job-titles', ...options });
-    }
-    
-    /**
-     * Retrieve lookup values
-     *
-     * Lookup lists of values for dropdowns; intended to be cached
-     * and not used in front ends directly.
-     * Using `?pick[]=country&contexts[]=project` will return a list of countries
-     * supported by when creating a project.
-     *
-     * `contexts` can only be used with the `country` lookup alone.
-     *
-     * _note:_
-     * - `jobTitles` is a very large list and throws an error in Prod,
-     * please use `/v1/job-titles` endpoint that is paginated
-     * - `industries`, `skills`, `topics` return a LOT of data and
-     * can be very slow to return
-     *
-     * _note:_
-     * - The following lookups' codes will change per environment as they are based on ids:
-     * [`industries`, `jobTitles`, `skills`, `topics`]
-     * - the rest will remain the same across environments
-     */
-    public getV1Lookups<ThrowOnError extends boolean = false>(options: Options<GetV1LookupsData, ThrowOnError>): RequestResult<GetV1LookupsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1LookupsResponses, unknown, ThrowOnError>({ url: '/v1/lookups', ...options });
-    }
-    
-    /**
-     * Create a message
-     *
-     * Create a message in a conversation.
-     */
-    public postV1MessagingConversationsByConversationUidMessages<ThrowOnError extends boolean = false>(options: Options<PostV1MessagingConversationsByConversationUidMessagesData, ThrowOnError>): RequestResult<PostV1MessagingConversationsByConversationUidMessagesResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1MessagingConversationsByConversationUidMessagesResponses, unknown, ThrowOnError>({
-            url: '/v1/messaging/conversations/{conversationUid}/messages',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Retrieve all messages
-     *
-     * Get all messages for a user.
-     * Will return messages from both the researcher and the participant.
-     *
-     * `conversation.metadata.externalResearcherId` can be used to link the message to an external researcher.
-     *
-     * `conversation.metadata.projectId` can be used to link the message to a project.
-     */
-    public getV1MessagingMessages<ThrowOnError extends boolean = false>(options: Options<GetV1MessagingMessagesData, ThrowOnError>): RequestResult<GetV1MessagingMessagesResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1MessagingMessagesResponses, unknown, ThrowOnError>({ url: '/v1/messaging/messages', ...options });
-    }
-    
-    /**
-     * Use `POST /messaging/conversations/:conversationUid/messages`
-     *
-     * @deprecated
-     */
-    public postV1MessagingMessages<ThrowOnError extends boolean = false>(options: Options<PostV1MessagingMessagesData, ThrowOnError>): RequestResult<PostV1MessagingMessagesResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1MessagingMessagesResponses, unknown, ThrowOnError>({
-            url: '/v1/messaging/messages',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Retrieve unread conversations
-     *
-     * Get all conversations with unread messages.
-     */
-    public getV1MessagingMessagesInbox<ThrowOnError extends boolean = false>(options: Options<GetV1MessagingMessagesInboxData, ThrowOnError>): RequestResult<GetV1MessagingMessagesInboxResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1MessagingMessagesInboxResponses, unknown, ThrowOnError>({ url: '/v1/messaging/messages/inbox', ...options });
-    }
-    
-    /**
-     * Retrieve specific message
-     *
-     * Get a message by its UID.
-     */
-    public getV1MessagingMessagesByMessageUid<ThrowOnError extends boolean = false>(options: Options<GetV1MessagingMessagesByMessageUidData, ThrowOnError>): RequestResult<GetV1MessagingMessagesByMessageUidResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1MessagingMessagesByMessageUidResponses, unknown, ThrowOnError>({ url: '/v1/messaging/messages/{messageUid}', ...options });
-    }
-    
-    /**
-     * Use `GET /messaging/messages/inbox`
-     *
-     * @deprecated
-     */
-    public getV1MessagingTeamsByTeamIdMessagesInbox<ThrowOnError extends boolean = false>(options: Options<GetV1MessagingTeamsByTeamIdMessagesInboxData, ThrowOnError>): RequestResult<GetV1MessagingTeamsByTeamIdMessagesInboxResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1MessagingTeamsByTeamIdMessagesInboxResponses, unknown, ThrowOnError>({ url: '/v1/messaging/teams/{teamId}/messages/inbox', ...options });
-    }
-    
-    /**
-     * Retrieve all conversations
-     *
-     * Get all conversations.
-     */
-    public getV1MessagingConversations<ThrowOnError extends boolean = false>(options: Options<GetV1MessagingConversationsData, ThrowOnError>): RequestResult<GetV1MessagingConversationsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1MessagingConversationsResponses, unknown, ThrowOnError>({ url: '/v1/messaging/conversations', ...options });
-    }
-    
-    /**
-     * Create a conversation
-     *
-     * Create a conversation.
-     * This must be done before sending a message.
-     */
-    public postV1MessagingConversations<ThrowOnError extends boolean = false>(options: Options<PostV1MessagingConversationsData, ThrowOnError>): RequestResult<PostV1MessagingConversationsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1MessagingConversationsResponses, unknown, ThrowOnError>({
-            url: '/v1/messaging/conversations',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Retrieve specific conversation
-     *
-     * Get a conversation by its UID.
-     */
-    public getV1MessagingConversationsByConversationUid<ThrowOnError extends boolean = false>(options: Options<GetV1MessagingConversationsByConversationUidData, ThrowOnError>): RequestResult<GetV1MessagingConversationsByConversationUidResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1MessagingConversationsByConversationUidResponses, unknown, ThrowOnError>({ url: '/v1/messaging/conversations/{conversationUid}', ...options });
-    }
-    
-    /**
-     * Update a conversation
-     *
-     * Update a conversation by its UID.
-     */
-    public patchV1MessagingConversationsByConversationUid<ThrowOnError extends boolean = false>(options: Options<PatchV1MessagingConversationsByConversationUidData, ThrowOnError>): RequestResult<PatchV1MessagingConversationsByConversationUidResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1MessagingConversationsByConversationUidResponses, unknown, ThrowOnError>({
-            url: '/v1/messaging/conversations/{conversationUid}',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Mark conversation as read
-     */
-    public patchV1MessagingConversationsByConversationUidRead<ThrowOnError extends boolean = false>(options: Options<PatchV1MessagingConversationsByConversationUidReadData, ThrowOnError>): RequestResult<PatchV1MessagingConversationsByConversationUidReadResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1MessagingConversationsByConversationUidReadResponses, unknown, ThrowOnError>({ url: '/v1/messaging/conversations/{conversationUid}/read', ...options });
-    }
-    
-    /**
-     * Add participant to conversation
-     */
-    public postV1MessagingConversationsByConversationUidParticipants<ThrowOnError extends boolean = false>(options: Options<PostV1MessagingConversationsByConversationUidParticipantsData, ThrowOnError>): RequestResult<PostV1MessagingConversationsByConversationUidParticipantsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1MessagingConversationsByConversationUidParticipantsResponses, unknown, ThrowOnError>({
-            url: '/v1/messaging/conversations/{conversationUid}/participants',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Remove participant from conversation
-     */
-    public deleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserId<ThrowOnError extends boolean = false>(options: Options<DeleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdData, ThrowOnError>): RequestResult<DeleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).delete<DeleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdResponses, unknown, ThrowOnError>({ url: '/v1/messaging/conversations/{conversationUid}/participants/{participantUserId}', ...options });
-    }
-    
-    /**
-     * Use `POST /messaging/conversations/:conversationUid/participants`.
-     *
-     * @deprecated
-     */
-    public postV1MessagingConversationsByConversationUidParticipantsByParticipantUserId<ThrowOnError extends boolean = false>(options: Options<PostV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdData, ThrowOnError>): RequestResult<PostV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdResponses, unknown, ThrowOnError>({ url: '/v1/messaging/conversations/{conversationUid}/participants/{participantUserId}', ...options });
-    }
-    
-    /**
-     * Create test participant (Staging only)
-     *
-     * Creates a respondent profile associated to your organizationId.
-     * Auto verified email and work email.
-     * To be used for testing in staging only.
-     */
-    public postV1Profiles<ThrowOnError extends boolean = false>(options: Options<PostV1ProfilesData, ThrowOnError>): RequestResult<PostV1ProfilesResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1ProfilesResponses, unknown, ThrowOnError>({
-            url: '/v1/profiles',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Retrieve participant profile
-     *
-     * Retrieves a participant profile by ID.
-     *
-     * **Breaking change (Prod: Apr 1, Staging: Mar 18):** Response will no longer include
-     * `lastName`, `location`, `age`, `gender`, `educationLevel`, `householdIncome`, `industry`,
-     * `jobFunctions`, `company`, `companySize`, `seniorityLevel`.
-     */
-    public getV1ProfilesByProfileId<ThrowOnError extends boolean = false>(options: Options<GetV1ProfilesByProfileIdData, ThrowOnError>): RequestResult<GetV1ProfilesByProfileIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1ProfilesByProfileIdResponses, unknown, ThrowOnError>({ url: '/v1/profiles/{profileId}', ...options });
-    }
-    
-    /**
-     * Delete a project
-     *
-     * Only projects in the status of draft can be deleted.
-     */
-    public deleteV1ProjectsByProjectId<ThrowOnError extends boolean = false>(options: Options<DeleteV1ProjectsByProjectIdData, ThrowOnError>): RequestResult<DeleteV1ProjectsByProjectIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).delete<DeleteV1ProjectsByProjectIdResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}', ...options });
-    }
-    
-    /**
-     * Retrieve a specific project
-     *
-     * Returns a Project by ID
-     */
-    public getV1ProjectsByProjectId<ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1ProjectsByProjectIdResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}', ...options });
-    }
-    
-    /**
-     * Update a project
-     */
-    public patchV1ProjectsByProjectId<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Use /projects instead
-     *
-     * @deprecated
-     */
-    public getV1TeamsByTeamIdProjects<ThrowOnError extends boolean = false>(options: Options<GetV1TeamsByTeamIdProjectsData, ThrowOnError>): RequestResult<GetV1TeamsByTeamIdProjectsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1TeamsByTeamIdProjectsResponses, unknown, ThrowOnError>({ url: '/v1/teams/{teamId}/projects', ...options });
-    }
-    
-    /**
-     * Retrieve all projects
-     *
-     * Returns All Projects. Closed projects are not returned by default. To get a list of closed projects only, set status = CLOSED.
-     */
-    public getV1Projects<ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsData, ThrowOnError>): RequestResult<GetV1ProjectsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1ProjectsResponses, unknown, ThrowOnError>({ url: '/v1/projects', ...options });
-    }
-    
-    /**
-     * Create a project
-     *
-     * Creates a Project.
-     */
-    public postV1Projects<ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsData, ThrowOnError>): RequestResult<PostV1ProjectsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1ProjectsResponses, unknown, ThrowOnError>({
-            url: '/v1/projects',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Copy a project
-     *
-     * Copy a Project
-     */
-    public postV1ProjectsByProjectIdCopy<ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsByProjectIdCopyData, ThrowOnError>): RequestResult<PostV1ProjectsByProjectIdCopyResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1ProjectsByProjectIdCopyResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/copy', ...options });
-    }
-    
-    /**
-     * Replace external screener questions
-     *
-     * External-screener organizations only. Replaces the project's declared
-     * external (partner) screener question catalog with the list in the body —
-     * the external-screener analogue of the screener-questions bulk endpoint.
-     *
-     * You may create the project with just the `externalScreenerLink` and
-     * declare the catalog here afterwards: the link and a non-empty catalog are
-     * required together only when the project is published. Answer rows posted
-     * to the external-screener-answers endpoint are validated against these
-     * `questionId`s, so keep them stable.
-     */
-    public putV1ProjectsByProjectIdExternalScreenerQuestionsBulk<ThrowOnError extends boolean = false>(options: Options<PutV1ProjectsByProjectIdExternalScreenerQuestionsBulkData, ThrowOnError>): RequestResult<PutV1ProjectsByProjectIdExternalScreenerQuestionsBulkResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).put<PutV1ProjectsByProjectIdExternalScreenerQuestionsBulkResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/external-screener-questions/bulk',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Upload NDA file
-     *
-     * The project must be in draft status to use this endpoint.
-     * Currently, only files of type nda are supported.
-     * Accepted file formats: PDF and DOCX.
-     * Must include `Content-Length` and `Content-Type` headers.
-     */
-    public putV1ProjectsByProjectIdFilesFormData<ThrowOnError extends boolean = false>(options: Options<PutV1ProjectsByProjectIdFilesFormDataData, ThrowOnError>): RequestResult<PutV1ProjectsByProjectIdFilesFormDataResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).put<PutV1ProjectsByProjectIdFilesFormDataResponses, unknown, ThrowOnError>({
-            ...formDataBodySerializer,
-            url: '/v1/projects/{projectId}/files/form-data',
-            ...options,
-            headers: {
-                'Content-Type': null,
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Publish a project
-     *
-     * Publishes a Project.
-     *
-     * Note: publicDescription field is required when publishing.
-     */
-    public patchV1ProjectsByProjectIdPublish<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdPublishData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdPublishResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdPublishResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/publish', ...options });
-    }
-    
-    /**
-     * Pause a project
-     *
-     * Pause / Unpause recruitment for a project
-     */
-    public patchV1ProjectsByProjectIdPause<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdPauseData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdPauseResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdPauseResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/pause',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Close a project
-     *
-     * Once a project is closed you can't contact participants, or change any
-     * participants' status.
-     */
-    public patchV1ProjectsByProjectIdClose<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdCloseData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdCloseResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdCloseResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/close',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Retrieve audience size estimate
-     *
-     * Get estimate of audience size for a project.
-     * Only available for projects in the status of draft.
-     */
-    public getV1ProjectsByProjectIdFeasibilityAudienceSizeEstimate<ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdFeasibilityAudienceSizeEstimateData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdFeasibilityAudienceSizeEstimateResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1ProjectsByProjectIdFeasibilityAudienceSizeEstimateResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/feasibility/audience-size-estimate', ...options });
-    }
-    
-    /**
-     * Retrieve screener questions
-     */
-    public getV1ProjectsByProjectIdScreenerQuestions<ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdScreenerQuestionsData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdScreenerQuestionsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1ProjectsByProjectIdScreenerQuestionsResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-questions', ...options });
-    }
-    
-    /**
-     * Create a screener question
-     *
-     * Only accepts one question at a time. Use /bulk for multiple questions.
-     *
-     * Question types and their valid `answerValue` codes:
-     *
-     * CHECKBOX (questionType: "checkbox"):
-     * answerValue: 1 → May Select
-     * answerValue: 2 → Must Select
-     * answerValue: 3 → Disqualify
-     *
-     * RADIO (questionType: "radio"):
-     * answerValue: 1 → Qualify
-     * answerValue: 2 → Disqualify
-     *
-     * Screener questions are limited to a maximum of 40 per project.
-     */
-    public postV1ProjectsByProjectIdScreenerQuestions<ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsByProjectIdScreenerQuestionsData, ThrowOnError>): RequestResult<PostV1ProjectsByProjectIdScreenerQuestionsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1ProjectsByProjectIdScreenerQuestionsResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-questions',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Create multiple screener questions
-     *
-     * This endpoint will replace all screener questions with the list in the body.
-     *
-     * Screener questions are limited to a maximum of 40 per project.
-     *
-     * Uid is optional. If not provided, a new uid will be generated for the question.
-     *
-     * Radio Question skip logic: `goToQuestionUid` is required.
-     *
-     * Checkbox Question skip logic: `answerUid` of the checkbox question and `goToQuestionUid` of question to navigate to are required.
-     *
-     * To use bulk screener endpoint, send the list of questions in the body:
-     *
-     * Option 1: Send bulk questions including uids and skip logic (see skip logic requirements above) from your end. We will process and return the response with the uids.
-     *
-     * Option 2: This option has 2 steps:
-     *
-     * 2.1 PUT request: Create bulk questions without skip logic.
-     *
-     * 2.2 PUT request: Use the generated uids from the above response to update the skip logic for bulk questions. Please ensure you refer the same uids generated in the response.
-     */
-    public putV1ProjectsByProjectIdScreenerQuestionsBulk<ThrowOnError extends boolean = false>(options: Options<PutV1ProjectsByProjectIdScreenerQuestionsBulkData, ThrowOnError>): RequestResult<PutV1ProjectsByProjectIdScreenerQuestionsBulkResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).put<PutV1ProjectsByProjectIdScreenerQuestionsBulkResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-questions/bulk',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Delete screener question
-     */
-    public deleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId<ThrowOnError extends boolean = false>(options: Options<DeleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdData, ThrowOnError>): RequestResult<DeleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).delete<DeleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-questions/{screenerQuestionId}', ...options });
-    }
-    
-    /**
-     * Retrieve specific screener question
-     */
-    public getV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId<ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-questions/{screenerQuestionId}', ...options });
-    }
-    
-    /**
-     * Update screener question
-     *
-     * Only the fields included in the request are modified. Questions can be edited on both draft and published projects. Editing after publish effectively replaces the screener: responses collected before the edit stay qualified against the original version, and only new responses are evaluated against the update. See the Creating questions guide (/docs/Screener-responses/screener-creation) for details.
-     */
-    public patchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-questions/{screenerQuestionId}',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Reorder screener questions
-     *
-     * Input body: Array of Screener Question IDs
-     * This endpoint orders the screener question based on the sequence of Screener Question IDs in the Array.
-     * Sending end question ID is optional. If not sent, the question will be moved to the end of the list.
-     */
-    public patchV1ProjectsByProjectIdScreenerQuestionsOrder<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerQuestionsOrderData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerQuestionsOrderResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerQuestionsOrderResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-questions/order',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * List screener responses
-     */
-    public getV1ProjectsByProjectIdScreenerResponses<ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdScreenerResponsesData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdScreenerResponsesResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1ProjectsByProjectIdScreenerResponsesResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses', ...options });
-    }
-    
-    /**
-     * Retrieve payout counts
-     *
-     * Returns the payout counts for participants which have been paid for a project.
-     */
-    public getV1ProjectsByProjectIdScreenerResponsesPayouts<ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdScreenerResponsesPayoutsData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdScreenerResponsesPayoutsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1ProjectsByProjectIdScreenerResponsesPayoutsResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/payouts', ...options });
-    }
-    
-    /**
-     * View a specific response
-     *
-     * Get Screener Response by Id.
-     */
-    public getV1ProjectsByProjectIdScreenerResponsesByScreenerResponseId<ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}', ...options });
-    }
-    
-    /**
-     * Invite participant
-     *
-     * Invite Participant to your Project.
-     * Invitations include your name, project name, and session link (for remote interviews).
-     * While the participant is still in `INVITED` status (they have not yet booked a time),
-     * an invitation can be withdrawn with the Cancel Invite endpoint.
-     * Email reminders are sent 5 days, 1 day, and 4 hours prior to booked time.
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInvite<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInviteData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInviteResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInviteResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/invite',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Schedule participant
-     *
-     * Set the scheduled time and timezone after booking a time with a participant.
-     * This will be displayed to the participant.
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdSchedule<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdScheduleData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdScheduleResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdScheduleResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/schedule',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Mark as attended
-     *
-     * Mark Participant as Attended.
-     * This will trigger the payment process for the Participant.
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttended<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttendedData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttendedResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttendedResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/attended', ...options });
-    }
-    
-    /**
-     * Report participant
-     *
-     * Anonymously report a participant for misrepresenting themselves or providing false information.
-     * The response's `status` becomes `CANCELLED` and its `visibility.status` becomes `DISMISSED`:
-     * the response is removed from the researcher UI and from default listings, so persist any identifiers
-     * you need (such as the screenerResponseId) before reporting.
-     * This participant will not appear in future projects with your team or organization,
-     * and their account may be subject to disciplinary action by Respondent, which may include suspension or permanent account removal.
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReport<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReportData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReportResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReportResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/report',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Mark as favorite
-     *
-     * Favorite Participant:
-     * Use this functionality to save this participant for later. Use the filter to easily retrieve them.
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavorite<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavoriteData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavoriteResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavoriteResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/favorite',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Qualify participant
-     *
-     * Qualify or disqualify a participant before inviting them.
-     * Qualification only updates the `qualified` flag on the response — it never changes the response `status`.
-     * Disqualifying a participant who has already been invited does NOT withdraw the invitation;
-     * use the Cancel Invite endpoint to withdraw an invitation, or Mark As Rejected after participation.
-     *
-     * Disqualification Reasons only accepts array of Code/s:
-     * code: "MISREPRESENTED", text: "False or misleading information provided by Participant"
-     * code: "CONTEXT", text: "Not enough information about participant"
-     * code: "SCREENER", text: "Answers to screener questions not a match"
-     * code: "OTHER", text: "Other"
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualify<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualifyData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualifyResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualifyResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/qualify',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Post external screener answers
-     *
-     * Post a participant's answers from your own screener — external-screener organizations only.
-     * Rows upsert idempotently per questionId and must reference the project's declared `externalQuestions`.
-     * The application reads as submitted once every declared question has an answer, or earlier when the payload
-     * sets `complete: true`; the overall verdict is derived from the per-row `qualifies` flags.
-     * Post the answers BEFORE redirecting the participant back to the Respondent apply page they came from.
-     * Corrections are just another POST with the corrected rows.
-     */
-    public postV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswers<ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswersData, ThrowOnError>): RequestResult<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswersResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswersResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/external-screener-answers',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Hide participant
-     *
-     * Flag to hide/unhide a screener response to filter out participant from your results.
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHide<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHideData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHideResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHideResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/hide',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Mark as no-show
-     *
-     * Mark Respondent As No Show: You can mark a respondent as No-Show 15 minutes after the scheduled interview time.
-     * Please make sure you have communicated with the respondent before marking him/her as 'No Show' as we send an email to let them know. This can not be undone.
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShow<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShowData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShowResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShowResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/no-show', ...options });
-    }
-    
-    /**
-     * Mark as rejected
-     *
-     * Mark Respondent As Rejected: You can reject a participant for low-quality responses.
-     * Participant will not be paid.
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReject<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdRejectData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdRejectResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdRejectResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/reject', ...options });
-    }
-    
-    /**
-     * Cancel invite
-     *
-     * Cancel Invite: This cancel invite functionality is only available for participants who have not yet booked a time.
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInvite<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInviteData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInviteResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInviteResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/cancel-invite', ...options });
-    }
-    
-    /**
-     * Cancel booking
-     *
-     * Any cancellations within 4 hours prior to a scheduled booking or after the booking time has passed will result in the participant being marked as attended.
-     * Researcher will be charged the full incentive and service fee in this case.
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBooking<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/cancel-booking', ...options });
-    }
-    
-    /**
-     * Cancel booking & re-invite
-     *
-     * Bookings cannot be rescheduled less than 4 hours for interviews before by the Researcher
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinvite<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinviteData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinviteResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinviteResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/cancel-booking-reinvite',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Cancel booking (participant request)
-     *
-     * This method is used when a public api partner is cancelling a booking on behalf of their participant.
-     */
-    public patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBooking<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBookingData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBookingResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBookingResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/participant-cancel-booking',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Trigger manual payout
-     *
-     * Used to payout a participant multiple times.
-     * Must pass payoutCount to ensure the intended number of payouts occur.
-     * Will pay them the same incentive amount again based on the project.
-     * Use `GET /projects/:projectId/payouts` to get the payout counts per participant for a project.
-     *
-     * Projects Autopay(true):
-     * The first time participants are paid automatically when they are marked as attended.
-     *
-     * Projects Autopay(false):
-     * The first time payment should be done by using the `POST /projects/:projectId/screener-responses/:screenerResponseId/payouts` endpoint.
-     */
-    public postV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayouts<ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayoutsData, ThrowOnError>): RequestResult<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayoutsResponses, PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayoutsErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayoutsResponses, PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayoutsErrors, ThrowOnError>({
-            url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/payouts',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Retrieve skill list
-     */
-    public getV1Skills<ThrowOnError extends boolean = false>(options: Options<GetV1SkillsData, ThrowOnError>): RequestResult<GetV1SkillsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1SkillsResponses, unknown, ThrowOnError>({ url: '/v1/skills', ...options });
-    }
-    
-    /**
-     * Get AI-generated project title and description suggestions
-     *
-     * Returns multiple variations of project title and description with different tones based on the provided input
-     */
-    public postV1ProjectsSuggestions<ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsSuggestionsData, ThrowOnError>): RequestResult<PostV1ProjectsSuggestionsResponses, PostV1ProjectsSuggestionsErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1ProjectsSuggestionsResponses, PostV1ProjectsSuggestionsErrors, ThrowOnError>({
-            url: '/v1/projects/suggestions',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Retrieve topics list
-     *
-     * These topics are not available in production:
-     * • Internet & Telecom
-     * • Online Communities
-     * • Hobbies & Leisure
-     * • Jobs & Education
-     * • Reference
-     * • Business & Industrial
-     * • People & Society
-     * • News
-     */
-    public getV1Topics<ThrowOnError extends boolean = false>(options: Options<GetV1TopicsData, ThrowOnError>): RequestResult<GetV1TopicsResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1TopicsResponses, unknown, ThrowOnError>({ url: '/v1/topics', ...options });
-    }
-    
-    /**
-     * View credit and incentive balance
-     *
-     * Returns the credit and incentive balances for the team.
-     * Incentives are represented in cents in US dollars.
-     * Credits are represented in a total count of credits.
-     * To get # of B2C credits divide by 30.
-     * To get # of B2B credits divide by 50.
-     */
-    public getV1PricingBalancesSummary<ThrowOnError extends boolean = false>(options: Options<GetV1PricingBalancesSummaryData, ThrowOnError>): RequestResult<GetV1PricingBalancesSummaryResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1PricingBalancesSummaryResponses, unknown, ThrowOnError>({ url: '/v1/pricing/balances/summary', ...options });
-    }
-    
-    /**
-     * Retrieve past participant profile
-     *
-     * Find a past participant by profile Id
-     * Requires organization feature: participant database.
-     */
-    public getV1TeamRespondentsProfilesByProfileId<ThrowOnError extends boolean = false>(options: Options<GetV1TeamRespondentsProfilesByProfileIdData, ThrowOnError>): RequestResult<GetV1TeamRespondentsProfilesByProfileIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1TeamRespondentsProfilesByProfileIdResponses, unknown, ThrowOnError>({ url: '/v1/team-respondents/profiles/{profileId}', ...options });
-    }
-    
-    /**
-     * Search past participants
-     *
-     * Search all past participants.
-     * Requires organization feature: participant database.
-     */
-    public getV1TeamRespondents<ThrowOnError extends boolean = false>(options?: Options<GetV1TeamRespondentsData, ThrowOnError>): RequestResult<GetV1TeamRespondentsResponses, unknown, ThrowOnError> {
-        return (options?.client ?? this.client).get<GetV1TeamRespondentsResponses, unknown, ThrowOnError>({ url: '/v1/team-respondents', ...options });
-    }
-    
-    /**
-     * Invite multiple past participants
-     *
-     * Send project link invitation to multiple team respondents to allow them to sign up for your project.
-     * Can allow respondent to skip the screener questions.
-     * Requires organization feature: participant database.
-     */
-    public putV1TeamRespondentsBatchInvite<ThrowOnError extends boolean = false>(options: Options<PutV1TeamRespondentsBatchInviteData, ThrowOnError>): RequestResult<PutV1TeamRespondentsBatchInviteResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).put<PutV1TeamRespondentsBatchInviteResponses, unknown, ThrowOnError>({
-            url: '/v1/team-respondents/batch-invite',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Retrieve webhook
-     *
-     * Get webhook for an organization.
-     */
-    public getV1Webhooks<ThrowOnError extends boolean = false>(options: Options<GetV1WebhooksData, ThrowOnError>): RequestResult<GetV1WebhooksResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1WebhooksResponses, unknown, ThrowOnError>({ url: '/v1/webhooks', ...options });
-    }
-    
-    /**
-     * Create webhook
-     *
-     * Each team can have a single active webhook url, which we send all events to.
-     * (A team may have multiple sets of API credentials; they all share the same webhook.)
-     * To change the url, send another post request with the new url —
-     * this deactivates the previous webhook and creates a new one.
-     *
-     * Webhook retries are live — partners must return a 2xx status code within 3 seconds;
-     * otherwise, we'll retry up to 5 times in 10-minute intervals.
-     */
-    public postV1Webhooks<ThrowOnError extends boolean = false>(options: Options<PostV1WebhooksData, ThrowOnError>): RequestResult<PostV1WebhooksResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1WebhooksResponses, unknown, ThrowOnError>({
-            url: '/v1/webhooks',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Deactivate webhook
-     */
-    public deleteV1WebhooksByWebhookId<ThrowOnError extends boolean = false>(options: Options<DeleteV1WebhooksByWebhookIdData, ThrowOnError>): RequestResult<DeleteV1WebhooksByWebhookIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).delete<DeleteV1WebhooksByWebhookIdResponses, unknown, ThrowOnError>({ url: '/v1/webhooks/{webhookId}', ...options });
-    }
-    
-    /**
-     * Retrieve specific webhook
-     *
-     * Get a webhook by id
-     */
-    public getV1WebhooksByWebhookId<ThrowOnError extends boolean = false>(options: Options<GetV1WebhooksByWebhookIdData, ThrowOnError>): RequestResult<GetV1WebhooksByWebhookIdResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1WebhooksByWebhookIdResponses, unknown, ThrowOnError>({ url: '/v1/webhooks/{webhookId}', ...options });
-    }
-    
-    /**
-     * Retrieve webhook event types
-     *
-     * Get all event types that can be sent to a webhook.
-     *
-     * `PROJECTS.UPDATED`: All Recruiting Status Changes.
-     *
-     * `SCREENER_RESPONSES.CREATED`: Screener Responses Created in `PENDING` state
-     *
-     * `SCREENER_RESPONSES.UPDATED`: Screener Response status updates. Statuses included: `PAID`, `CANCELLED`.
-     *
-     * `MESSAGES.CREATED`: Any new messages from participants
-     *
-     * `CONVERSATIONS.CREATED`: Any new conversation
-     */
-    public getV1WebhooksByWebhookIdEventTypes<ThrowOnError extends boolean = false>(options: Options<GetV1WebhooksByWebhookIdEventTypesData, ThrowOnError>): RequestResult<GetV1WebhooksByWebhookIdEventTypesResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1WebhooksByWebhookIdEventTypesResponses, unknown, ThrowOnError>({ url: '/v1/webhooks/{webhookId}/event-types', ...options });
-    }
-    
-    /**
-     * Simulate webhook event
-     *
-     * Making a request to this endpoint will trigger a test webhook for the specified event.
-     * This can be very useful when testing the setup that processes webhooks on your end.
-     * Will use random resource ids for the event.
-     */
-    public postV1WebhooksByWebhookIdSimulate<ThrowOnError extends boolean = false>(options: Options<PostV1WebhooksByWebhookIdSimulateData, ThrowOnError>): RequestResult<PostV1WebhooksByWebhookIdSimulateResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1WebhooksByWebhookIdSimulateResponses, unknown, ThrowOnError>({
-            url: '/v1/webhooks/{webhookId}/simulate',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Delete quota
-     */
-    public deleteV1ProjectsByProjectIdQuota<ThrowOnError extends boolean = false>(options: Options<DeleteV1ProjectsByProjectIdQuotaData, ThrowOnError>): RequestResult<DeleteV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).delete<DeleteV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/quota', ...options });
-    }
-    
-    /**
-     * Retrieve quota
-     */
-    public getV1ProjectsByProjectIdQuota<ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdQuotaData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).get<GetV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/quota', ...options });
-    }
-    
-    /**
-     * Update quota
-     */
-    public patchV1ProjectsByProjectIdQuota<ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdQuotaData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/quota',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Create quota
-     */
-    public postV1ProjectsByProjectIdQuota<ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsByProjectIdQuotaData, ThrowOnError>): RequestResult<PostV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError> {
-        return (options.client ?? this.client).post<PostV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError>({
-            url: '/v1/projects/{projectId}/quota',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-}
+/**
+ * Retrieve lookup values
+ *
+ * Lookup lists of values for dropdowns; intended to be cached
+ * and not used in front ends directly.
+ * Using `?pick[]=country&contexts[]=project` will return a list of countries
+ * supported by when creating a project.
+ *
+ * `contexts` can only be used with the `country` lookup alone.
+ *
+ * _note:_
+ * - `jobTitles` is a very large list and throws an error in Prod,
+ * please use `/v1/job-titles` endpoint that is paginated
+ * - `industries`, `skills`, `topics` return a LOT of data and
+ * can be very slow to return
+ *
+ * _note:_
+ * - The following lookups' codes will change per environment as they are based on ids:
+ * [`industries`, `jobTitles`, `skills`, `topics`]
+ * - the rest will remain the same across environments
+ */
+export const getV1Lookups = <ThrowOnError extends boolean = false>(options: Options<GetV1LookupsData, ThrowOnError>): RequestResult<GetV1LookupsResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1LookupsResponses, unknown, ThrowOnError>({ url: '/v1/lookups', ...options });
+
+/**
+ * Create a message
+ *
+ * Create a message in a conversation.
+ */
+export const postV1MessagingConversationsByConversationUidMessages = <ThrowOnError extends boolean = false>(options: Options<PostV1MessagingConversationsByConversationUidMessagesData, ThrowOnError>): RequestResult<PostV1MessagingConversationsByConversationUidMessagesResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1MessagingConversationsByConversationUidMessagesResponses, unknown, ThrowOnError>({
+    url: '/v1/messaging/conversations/{conversationUid}/messages',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Retrieve all messages
+ *
+ * Get all messages for a user.
+ * Will return messages from both the researcher and the participant.
+ *
+ * `conversation.metadata.externalResearcherId` can be used to link the message to an external researcher.
+ *
+ * `conversation.metadata.projectId` can be used to link the message to a project.
+ */
+export const getV1MessagingMessages = <ThrowOnError extends boolean = false>(options: Options<GetV1MessagingMessagesData, ThrowOnError>): RequestResult<GetV1MessagingMessagesResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1MessagingMessagesResponses, unknown, ThrowOnError>({ url: '/v1/messaging/messages', ...options });
+
+/**
+ * Use `POST /messaging/conversations/:conversationUid/messages`
+ *
+ * @deprecated
+ */
+export const postV1MessagingMessages = <ThrowOnError extends boolean = false>(options: Options<PostV1MessagingMessagesData, ThrowOnError>): RequestResult<PostV1MessagingMessagesResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1MessagingMessagesResponses, unknown, ThrowOnError>({
+    url: '/v1/messaging/messages',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Retrieve unread conversations
+ *
+ * Get all conversations with unread messages.
+ */
+export const getV1MessagingMessagesInbox = <ThrowOnError extends boolean = false>(options: Options<GetV1MessagingMessagesInboxData, ThrowOnError>): RequestResult<GetV1MessagingMessagesInboxResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1MessagingMessagesInboxResponses, unknown, ThrowOnError>({ url: '/v1/messaging/messages/inbox', ...options });
+
+/**
+ * Retrieve specific message
+ *
+ * Get a message by its UID.
+ */
+export const getV1MessagingMessagesByMessageUid = <ThrowOnError extends boolean = false>(options: Options<GetV1MessagingMessagesByMessageUidData, ThrowOnError>): RequestResult<GetV1MessagingMessagesByMessageUidResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1MessagingMessagesByMessageUidResponses, unknown, ThrowOnError>({ url: '/v1/messaging/messages/{messageUid}', ...options });
+
+/**
+ * Use `GET /messaging/messages/inbox`
+ *
+ * @deprecated
+ */
+export const getV1MessagingTeamsByTeamIdMessagesInbox = <ThrowOnError extends boolean = false>(options: Options<GetV1MessagingTeamsByTeamIdMessagesInboxData, ThrowOnError>): RequestResult<GetV1MessagingTeamsByTeamIdMessagesInboxResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1MessagingTeamsByTeamIdMessagesInboxResponses, unknown, ThrowOnError>({ url: '/v1/messaging/teams/{teamId}/messages/inbox', ...options });
+
+/**
+ * Retrieve all conversations
+ *
+ * Get all conversations.
+ */
+export const getV1MessagingConversations = <ThrowOnError extends boolean = false>(options: Options<GetV1MessagingConversationsData, ThrowOnError>): RequestResult<GetV1MessagingConversationsResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1MessagingConversationsResponses, unknown, ThrowOnError>({ url: '/v1/messaging/conversations', ...options });
+
+/**
+ * Create a conversation
+ *
+ * Create a conversation.
+ * This must be done before sending a message.
+ */
+export const postV1MessagingConversations = <ThrowOnError extends boolean = false>(options: Options<PostV1MessagingConversationsData, ThrowOnError>): RequestResult<PostV1MessagingConversationsResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1MessagingConversationsResponses, unknown, ThrowOnError>({
+    url: '/v1/messaging/conversations',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Retrieve specific conversation
+ *
+ * Get a conversation by its UID.
+ */
+export const getV1MessagingConversationsByConversationUid = <ThrowOnError extends boolean = false>(options: Options<GetV1MessagingConversationsByConversationUidData, ThrowOnError>): RequestResult<GetV1MessagingConversationsByConversationUidResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1MessagingConversationsByConversationUidResponses, unknown, ThrowOnError>({ url: '/v1/messaging/conversations/{conversationUid}', ...options });
+
+/**
+ * Update a conversation
+ *
+ * Update a conversation by its UID.
+ */
+export const patchV1MessagingConversationsByConversationUid = <ThrowOnError extends boolean = false>(options: Options<PatchV1MessagingConversationsByConversationUidData, ThrowOnError>): RequestResult<PatchV1MessagingConversationsByConversationUidResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1MessagingConversationsByConversationUidResponses, unknown, ThrowOnError>({
+    url: '/v1/messaging/conversations/{conversationUid}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Mark conversation as read
+ */
+export const patchV1MessagingConversationsByConversationUidRead = <ThrowOnError extends boolean = false>(options: Options<PatchV1MessagingConversationsByConversationUidReadData, ThrowOnError>): RequestResult<PatchV1MessagingConversationsByConversationUidReadResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1MessagingConversationsByConversationUidReadResponses, unknown, ThrowOnError>({ url: '/v1/messaging/conversations/{conversationUid}/read', ...options });
+
+/**
+ * Add participant to conversation
+ */
+export const postV1MessagingConversationsByConversationUidParticipants = <ThrowOnError extends boolean = false>(options: Options<PostV1MessagingConversationsByConversationUidParticipantsData, ThrowOnError>): RequestResult<PostV1MessagingConversationsByConversationUidParticipantsResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1MessagingConversationsByConversationUidParticipantsResponses, unknown, ThrowOnError>({
+    url: '/v1/messaging/conversations/{conversationUid}/participants',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Remove participant from conversation
+ */
+export const deleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserId = <ThrowOnError extends boolean = false>(options: Options<DeleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdData, ThrowOnError>): RequestResult<DeleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdResponses, unknown, ThrowOnError> => (options.client ?? client).delete<DeleteV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdResponses, unknown, ThrowOnError>({ url: '/v1/messaging/conversations/{conversationUid}/participants/{participantUserId}', ...options });
+
+/**
+ * Use `POST /messaging/conversations/:conversationUid/participants`.
+ *
+ * @deprecated
+ */
+export const postV1MessagingConversationsByConversationUidParticipantsByParticipantUserId = <ThrowOnError extends boolean = false>(options: Options<PostV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdData, ThrowOnError>): RequestResult<PostV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1MessagingConversationsByConversationUidParticipantsByParticipantUserIdResponses, unknown, ThrowOnError>({ url: '/v1/messaging/conversations/{conversationUid}/participants/{participantUserId}', ...options });
+
+/**
+ * Create test participant (Staging only)
+ *
+ * Creates a respondent profile associated to your organizationId.
+ * Auto verified email and work email.
+ * To be used for testing in staging only.
+ */
+export const postV1Profiles = <ThrowOnError extends boolean = false>(options: Options<PostV1ProfilesData, ThrowOnError>): RequestResult<PostV1ProfilesResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1ProfilesResponses, unknown, ThrowOnError>({
+    url: '/v1/profiles',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Retrieve participant profile
+ *
+ * Retrieves a participant profile by ID.
+ *
+ * **Breaking change (Prod: Apr 1, Staging: Mar 18):** Response will no longer include
+ * `lastName`, `location`, `age`, `gender`, `educationLevel`, `householdIncome`, `industry`,
+ * `jobFunctions`, `company`, `companySize`, `seniorityLevel`.
+ */
+export const getV1ProfilesByProfileId = <ThrowOnError extends boolean = false>(options: Options<GetV1ProfilesByProfileIdData, ThrowOnError>): RequestResult<GetV1ProfilesByProfileIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1ProfilesByProfileIdResponses, unknown, ThrowOnError>({ url: '/v1/profiles/{profileId}', ...options });
+
+/**
+ * Delete a project
+ *
+ * Only projects in the status of draft can be deleted.
+ */
+export const deleteV1ProjectsByProjectId = <ThrowOnError extends boolean = false>(options: Options<DeleteV1ProjectsByProjectIdData, ThrowOnError>): RequestResult<DeleteV1ProjectsByProjectIdResponses, unknown, ThrowOnError> => (options.client ?? client).delete<DeleteV1ProjectsByProjectIdResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}', ...options });
+
+/**
+ * Retrieve a specific project
+ *
+ * Returns a Project by ID
+ */
+export const getV1ProjectsByProjectId = <ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1ProjectsByProjectIdResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}', ...options });
+
+/**
+ * Update a project
+ */
+export const patchV1ProjectsByProjectId = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Use /projects instead
+ *
+ * @deprecated
+ */
+export const getV1TeamsByTeamIdProjects = <ThrowOnError extends boolean = false>(options: Options<GetV1TeamsByTeamIdProjectsData, ThrowOnError>): RequestResult<GetV1TeamsByTeamIdProjectsResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1TeamsByTeamIdProjectsResponses, unknown, ThrowOnError>({ url: '/v1/teams/{teamId}/projects', ...options });
+
+/**
+ * Retrieve all projects
+ *
+ * Returns All Projects. Closed projects are not returned by default. To get a list of closed projects only, set status = CLOSED.
+ */
+export const getV1Projects = <ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsData, ThrowOnError>): RequestResult<GetV1ProjectsResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1ProjectsResponses, unknown, ThrowOnError>({ url: '/v1/projects', ...options });
+
+/**
+ * Create a project
+ *
+ * Creates a Project.
+ */
+export const postV1Projects = <ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsData, ThrowOnError>): RequestResult<PostV1ProjectsResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1ProjectsResponses, unknown, ThrowOnError>({
+    url: '/v1/projects',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Copy a project
+ *
+ * Copy a Project
+ */
+export const postV1ProjectsByProjectIdCopy = <ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsByProjectIdCopyData, ThrowOnError>): RequestResult<PostV1ProjectsByProjectIdCopyResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1ProjectsByProjectIdCopyResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/copy', ...options });
+
+/**
+ * Replace external screener questions
+ *
+ * External-screener organizations only. Replaces the project's declared
+ * external (partner) screener question catalog with the list in the body —
+ * the external-screener analogue of the screener-questions bulk endpoint.
+ *
+ * You may create the project with just the `externalScreenerLink` and
+ * declare the catalog here afterwards: the link and a non-empty catalog are
+ * required together only when the project is published. Answer rows posted
+ * to the external-screener-answers endpoint are validated against these
+ * `questionId`s, so keep them stable.
+ */
+export const putV1ProjectsByProjectIdExternalScreenerQuestionsBulk = <ThrowOnError extends boolean = false>(options: Options<PutV1ProjectsByProjectIdExternalScreenerQuestionsBulkData, ThrowOnError>): RequestResult<PutV1ProjectsByProjectIdExternalScreenerQuestionsBulkResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutV1ProjectsByProjectIdExternalScreenerQuestionsBulkResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/external-screener-questions/bulk',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Upload NDA file
+ *
+ * The project must be in draft status to use this endpoint.
+ * Currently, only files of type nda are supported.
+ * Accepted file formats: PDF and DOCX.
+ * Must include `Content-Length` and `Content-Type` headers.
+ */
+export const putV1ProjectsByProjectIdFilesFormData = <ThrowOnError extends boolean = false>(options: Options<PutV1ProjectsByProjectIdFilesFormDataData, ThrowOnError>): RequestResult<PutV1ProjectsByProjectIdFilesFormDataResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutV1ProjectsByProjectIdFilesFormDataResponses, unknown, ThrowOnError>({
+    ...formDataBodySerializer,
+    url: '/v1/projects/{projectId}/files/form-data',
+    ...options,
+    headers: {
+        'Content-Type': null,
+        ...options.headers
+    }
+});
+
+/**
+ * Publish a project
+ *
+ * Publishes a Project.
+ *
+ * Note: publicDescription field is required when publishing.
+ */
+export const patchV1ProjectsByProjectIdPublish = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdPublishData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdPublishResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdPublishResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/publish', ...options });
+
+/**
+ * Pause a project
+ *
+ * Pause / Unpause recruitment for a project
+ */
+export const patchV1ProjectsByProjectIdPause = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdPauseData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdPauseResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdPauseResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/pause',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Close a project
+ *
+ * Once a project is closed you can't contact participants, or change any
+ * participants' status.
+ */
+export const patchV1ProjectsByProjectIdClose = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdCloseData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdCloseResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdCloseResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/close',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Retrieve audience size estimate
+ *
+ * Get estimate of audience size for a project.
+ * Only available for projects in the status of draft.
+ */
+export const getV1ProjectsByProjectIdFeasibilityAudienceSizeEstimate = <ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdFeasibilityAudienceSizeEstimateData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdFeasibilityAudienceSizeEstimateResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1ProjectsByProjectIdFeasibilityAudienceSizeEstimateResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/feasibility/audience-size-estimate', ...options });
+
+/**
+ * Retrieve screener questions
+ */
+export const getV1ProjectsByProjectIdScreenerQuestions = <ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdScreenerQuestionsData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdScreenerQuestionsResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1ProjectsByProjectIdScreenerQuestionsResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-questions', ...options });
+
+/**
+ * Create a screener question
+ *
+ * Only accepts one question at a time. Use /bulk for multiple questions.
+ *
+ * Question types and their valid `answerValue` codes:
+ *
+ * CHECKBOX (questionType: "checkbox"):
+ * answerValue: 1 → May Select
+ * answerValue: 2 → Must Select
+ * answerValue: 3 → Disqualify
+ *
+ * RADIO (questionType: "radio"):
+ * answerValue: 1 → Qualify
+ * answerValue: 2 → Disqualify
+ *
+ * Screener questions are limited to a maximum of 40 per project.
+ */
+export const postV1ProjectsByProjectIdScreenerQuestions = <ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsByProjectIdScreenerQuestionsData, ThrowOnError>): RequestResult<PostV1ProjectsByProjectIdScreenerQuestionsResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1ProjectsByProjectIdScreenerQuestionsResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-questions',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Create multiple screener questions
+ *
+ * This endpoint will replace all screener questions with the list in the body.
+ *
+ * Screener questions are limited to a maximum of 40 per project.
+ *
+ * Uid is optional. If not provided, a new uid will be generated for the question.
+ *
+ * Radio Question skip logic: `goToQuestionUid` is required.
+ *
+ * Checkbox Question skip logic: `answerUid` of the checkbox question and `goToQuestionUid` of question to navigate to are required.
+ *
+ * To use bulk screener endpoint, send the list of questions in the body:
+ *
+ * Option 1: Send bulk questions including uids and skip logic (see skip logic requirements above) from your end. We will process and return the response with the uids.
+ *
+ * Option 2: This option has 2 steps:
+ *
+ * 2.1 PUT request: Create bulk questions without skip logic.
+ *
+ * 2.2 PUT request: Use the generated uids from the above response to update the skip logic for bulk questions. Please ensure you refer the same uids generated in the response.
+ */
+export const putV1ProjectsByProjectIdScreenerQuestionsBulk = <ThrowOnError extends boolean = false>(options: Options<PutV1ProjectsByProjectIdScreenerQuestionsBulkData, ThrowOnError>): RequestResult<PutV1ProjectsByProjectIdScreenerQuestionsBulkResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutV1ProjectsByProjectIdScreenerQuestionsBulkResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-questions/bulk',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete screener question
+ */
+export const deleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId = <ThrowOnError extends boolean = false>(options: Options<DeleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdData, ThrowOnError>): RequestResult<DeleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError> => (options.client ?? client).delete<DeleteV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-questions/{screenerQuestionId}', ...options });
+
+/**
+ * Retrieve specific screener question
+ */
+export const getV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId = <ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-questions/{screenerQuestionId}', ...options });
+
+/**
+ * Update screener question
+ *
+ * Only the fields included in the request are modified. Questions can be edited on both draft and published projects. Editing after publish effectively replaces the screener: responses collected before the edit stay qualified against the original version, and only new responses are evaluated against the update. See the Creating questions guide (/docs/Screener-responses/screener-creation) for details.
+ */
+export const patchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionId = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerQuestionsByScreenerQuestionIdResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-questions/{screenerQuestionId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Reorder screener questions
+ *
+ * Input body: Array of Screener Question IDs
+ * This endpoint orders the screener question based on the sequence of Screener Question IDs in the Array.
+ * Sending end question ID is optional. If not sent, the question will be moved to the end of the list.
+ */
+export const patchV1ProjectsByProjectIdScreenerQuestionsOrder = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerQuestionsOrderData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerQuestionsOrderResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerQuestionsOrderResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-questions/order',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List screener responses
+ */
+export const getV1ProjectsByProjectIdScreenerResponses = <ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdScreenerResponsesData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdScreenerResponsesResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1ProjectsByProjectIdScreenerResponsesResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses', ...options });
+
+/**
+ * Retrieve payout counts
+ *
+ * Returns the payout counts for participants which have been paid for a project.
+ */
+export const getV1ProjectsByProjectIdScreenerResponsesPayouts = <ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdScreenerResponsesPayoutsData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdScreenerResponsesPayoutsResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1ProjectsByProjectIdScreenerResponsesPayoutsResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/payouts', ...options });
+
+/**
+ * View a specific response
+ *
+ * Get Screener Response by Id.
+ */
+export const getV1ProjectsByProjectIdScreenerResponsesByScreenerResponseId = <ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}', ...options });
+
+/**
+ * Invite participant
+ *
+ * Invite Participant to your Project.
+ * Invitations include your name, project name, and session link (for remote interviews).
+ * While the participant is still in `INVITED` status (they have not yet booked a time),
+ * an invitation can be withdrawn with the Cancel Invite endpoint.
+ * Email reminders are sent 5 days, 1 day, and 4 hours prior to booked time.
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInvite = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInviteData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInviteResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdInviteResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/invite',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Schedule participant
+ *
+ * Set the scheduled time and timezone after booking a time with a participant.
+ * This will be displayed to the participant.
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdSchedule = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdScheduleData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdScheduleResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdScheduleResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/schedule',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Mark as attended
+ *
+ * Mark Participant as Attended.
+ * This will trigger the payment process for the Participant.
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttended = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttendedData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttendedResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdAttendedResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/attended', ...options });
+
+/**
+ * Report participant
+ *
+ * Anonymously report a participant for misrepresenting themselves or providing false information.
+ * The response's `status` becomes `CANCELLED` and its `visibility.status` becomes `DISMISSED`:
+ * the response is removed from the researcher UI and from default listings, so persist any identifiers
+ * you need (such as the screenerResponseId) before reporting.
+ * This participant will not appear in future projects with your team or organization,
+ * and their account may be subject to disciplinary action by Respondent, which may include suspension or permanent account removal.
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReport = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReportData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReportResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReportResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/report',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Mark as favorite
+ *
+ * Favorite Participant:
+ * Use this functionality to save this participant for later. Use the filter to easily retrieve them.
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavorite = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavoriteData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavoriteResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdFavoriteResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/favorite',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Qualify participant
+ *
+ * Qualify or disqualify a participant before inviting them.
+ * Qualification only updates the `qualified` flag on the response — it never changes the response `status`.
+ * Disqualifying a participant who has already been invited does NOT withdraw the invitation;
+ * use the Cancel Invite endpoint to withdraw an invitation, or Mark As Rejected after participation.
+ *
+ * Disqualification Reasons only accepts array of Code/s:
+ * code: "MISREPRESENTED", text: "False or misleading information provided by Participant"
+ * code: "CONTEXT", text: "Not enough information about participant"
+ * code: "SCREENER", text: "Answers to screener questions not a match"
+ * code: "OTHER", text: "Other"
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualify = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualifyData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualifyResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdQualifyResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/qualify',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Post external screener answers
+ *
+ * Post a participant's answers from your own screener — external-screener organizations only.
+ * Rows upsert idempotently per questionId and must reference the project's declared `externalQuestions`.
+ * The application reads as submitted once every declared question has an answer, or earlier when the payload
+ * sets `complete: true`; the overall verdict is derived from the per-row `qualifies` flags.
+ * Post the answers BEFORE redirecting the participant back to the Respondent apply page they came from.
+ * Corrections are just another POST with the corrected rows.
+ */
+export const postV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswers = <ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswersData, ThrowOnError>): RequestResult<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswersResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdExternalScreenerAnswersResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/external-screener-answers',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Hide participant
+ *
+ * Flag to hide/unhide a screener response to filter out participant from your results.
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHide = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHideData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHideResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdHideResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/hide',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Mark as no-show
+ *
+ * Mark Respondent As No Show: You can mark a respondent as No-Show 15 minutes after the scheduled interview time.
+ * Please make sure you have communicated with the respondent before marking him/her as 'No Show' as we send an email to let them know. This can not be undone.
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShow = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShowData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShowResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdNoShowResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/no-show', ...options });
+
+/**
+ * Mark as rejected
+ *
+ * Mark Respondent As Rejected: You can reject a participant for low-quality responses.
+ * Participant will not be paid.
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdReject = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdRejectData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdRejectResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdRejectResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/reject', ...options });
+
+/**
+ * Cancel invite
+ *
+ * Cancel Invite: This cancel invite functionality is only available for participants who have not yet booked a time.
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInvite = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInviteData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInviteResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelInviteResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/cancel-invite', ...options });
+
+/**
+ * Cancel booking
+ *
+ * Any cancellations within 4 hours prior to a scheduled booking or after the booking time has passed will result in the participant being marked as attended.
+ * Researcher will be charged the full incentive and service fee in this case.
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBooking = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/cancel-booking', ...options });
+
+/**
+ * Cancel booking & re-invite
+ *
+ * Bookings cannot be rescheduled less than 4 hours for interviews before by the Researcher
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinvite = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinviteData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinviteResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdCancelBookingReinviteResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/cancel-booking-reinvite',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Cancel booking (participant request)
+ *
+ * This method is used when a public api partner is cancelling a booking on behalf of their participant.
+ */
+export const patchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBooking = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBookingData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBookingResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdParticipantCancelBookingResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/participant-cancel-booking',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Trigger manual payout
+ *
+ * Used to payout a participant multiple times.
+ * Must pass payoutCount to ensure the intended number of payouts occur.
+ * Will pay them the same incentive amount again based on the project.
+ * Use `GET /projects/:projectId/payouts` to get the payout counts per participant for a project.
+ *
+ * Projects Autopay(true):
+ * The first time participants are paid automatically when they are marked as attended.
+ *
+ * Projects Autopay(false):
+ * The first time payment should be done by using the `POST /projects/:projectId/screener-responses/:screenerResponseId/payouts` endpoint.
+ */
+export const postV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayouts = <ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayoutsData, ThrowOnError>): RequestResult<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayoutsResponses, PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayoutsErrors, ThrowOnError> => (options.client ?? client).post<PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayoutsResponses, PostV1ProjectsByProjectIdScreenerResponsesByScreenerResponseIdPayoutsErrors, ThrowOnError>({
+    url: '/v1/projects/{projectId}/screener-responses/{screenerResponseId}/payouts',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Retrieve skill list
+ */
+export const getV1Skills = <ThrowOnError extends boolean = false>(options: Options<GetV1SkillsData, ThrowOnError>): RequestResult<GetV1SkillsResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1SkillsResponses, unknown, ThrowOnError>({ url: '/v1/skills', ...options });
+
+/**
+ * Get AI-generated project title and description suggestions
+ *
+ * Returns multiple variations of project title and description with different tones based on the provided input
+ */
+export const postV1ProjectsSuggestions = <ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsSuggestionsData, ThrowOnError>): RequestResult<PostV1ProjectsSuggestionsResponses, PostV1ProjectsSuggestionsErrors, ThrowOnError> => (options.client ?? client).post<PostV1ProjectsSuggestionsResponses, PostV1ProjectsSuggestionsErrors, ThrowOnError>({
+    url: '/v1/projects/suggestions',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Retrieve topics list
+ *
+ * These topics are not available in production:
+ * • Internet & Telecom
+ * • Online Communities
+ * • Hobbies & Leisure
+ * • Jobs & Education
+ * • Reference
+ * • Business & Industrial
+ * • People & Society
+ * • News
+ */
+export const getV1Topics = <ThrowOnError extends boolean = false>(options: Options<GetV1TopicsData, ThrowOnError>): RequestResult<GetV1TopicsResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1TopicsResponses, unknown, ThrowOnError>({ url: '/v1/topics', ...options });
+
+/**
+ * View credit and incentive balance
+ *
+ * Returns the credit and incentive balances for the team.
+ * Incentives are represented in cents in US dollars.
+ * Credits are represented in a total count of credits.
+ * To get # of B2C credits divide by 30.
+ * To get # of B2B credits divide by 50.
+ */
+export const getV1PricingBalancesSummary = <ThrowOnError extends boolean = false>(options: Options<GetV1PricingBalancesSummaryData, ThrowOnError>): RequestResult<GetV1PricingBalancesSummaryResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1PricingBalancesSummaryResponses, unknown, ThrowOnError>({ url: '/v1/pricing/balances/summary', ...options });
+
+/**
+ * Retrieve past participant profile
+ *
+ * Find a past participant by profile Id
+ * Requires organization feature: participant database.
+ */
+export const getV1TeamRespondentsProfilesByProfileId = <ThrowOnError extends boolean = false>(options: Options<GetV1TeamRespondentsProfilesByProfileIdData, ThrowOnError>): RequestResult<GetV1TeamRespondentsProfilesByProfileIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1TeamRespondentsProfilesByProfileIdResponses, unknown, ThrowOnError>({ url: '/v1/team-respondents/profiles/{profileId}', ...options });
+
+/**
+ * Search past participants
+ *
+ * Search all past participants.
+ * Requires organization feature: participant database.
+ */
+export const getV1TeamRespondents = <ThrowOnError extends boolean = false>(options?: Options<GetV1TeamRespondentsData, ThrowOnError>): RequestResult<GetV1TeamRespondentsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetV1TeamRespondentsResponses, unknown, ThrowOnError>({ url: '/v1/team-respondents', ...options });
+
+/**
+ * Invite multiple past participants
+ *
+ * Send project link invitation to multiple team respondents to allow them to sign up for your project.
+ * Can allow respondent to skip the screener questions.
+ * Requires organization feature: participant database.
+ */
+export const putV1TeamRespondentsBatchInvite = <ThrowOnError extends boolean = false>(options: Options<PutV1TeamRespondentsBatchInviteData, ThrowOnError>): RequestResult<PutV1TeamRespondentsBatchInviteResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutV1TeamRespondentsBatchInviteResponses, unknown, ThrowOnError>({
+    url: '/v1/team-respondents/batch-invite',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Retrieve webhook
+ *
+ * Get webhook for an organization.
+ */
+export const getV1Webhooks = <ThrowOnError extends boolean = false>(options: Options<GetV1WebhooksData, ThrowOnError>): RequestResult<GetV1WebhooksResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1WebhooksResponses, unknown, ThrowOnError>({ url: '/v1/webhooks', ...options });
+
+/**
+ * Create webhook
+ *
+ * Each team can have a single active webhook url, which we send all events to.
+ * (A team may have multiple sets of API credentials; they all share the same webhook.)
+ * To change the url, send another post request with the new url —
+ * this deactivates the previous webhook and creates a new one.
+ *
+ * Webhook retries are live — partners must return a 2xx status code within 3 seconds;
+ * otherwise, we'll retry up to 5 times in 10-minute intervals.
+ */
+export const postV1Webhooks = <ThrowOnError extends boolean = false>(options: Options<PostV1WebhooksData, ThrowOnError>): RequestResult<PostV1WebhooksResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1WebhooksResponses, unknown, ThrowOnError>({
+    url: '/v1/webhooks',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Deactivate webhook
+ */
+export const deleteV1WebhooksByWebhookId = <ThrowOnError extends boolean = false>(options: Options<DeleteV1WebhooksByWebhookIdData, ThrowOnError>): RequestResult<DeleteV1WebhooksByWebhookIdResponses, unknown, ThrowOnError> => (options.client ?? client).delete<DeleteV1WebhooksByWebhookIdResponses, unknown, ThrowOnError>({ url: '/v1/webhooks/{webhookId}', ...options });
+
+/**
+ * Retrieve specific webhook
+ *
+ * Get a webhook by id
+ */
+export const getV1WebhooksByWebhookId = <ThrowOnError extends boolean = false>(options: Options<GetV1WebhooksByWebhookIdData, ThrowOnError>): RequestResult<GetV1WebhooksByWebhookIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1WebhooksByWebhookIdResponses, unknown, ThrowOnError>({ url: '/v1/webhooks/{webhookId}', ...options });
+
+/**
+ * Retrieve webhook event types
+ *
+ * Get all event types that can be sent to a webhook.
+ *
+ * `PROJECTS.UPDATED`: All Recruiting Status Changes.
+ *
+ * `SCREENER_RESPONSES.CREATED`: Screener Responses Created in `PENDING` state
+ *
+ * `SCREENER_RESPONSES.UPDATED`: Screener Response status updates. Statuses included: `PAID`, `CANCELLED`.
+ *
+ * `MESSAGES.CREATED`: Any new messages from participants
+ *
+ * `CONVERSATIONS.CREATED`: Any new conversation
+ */
+export const getV1WebhooksByWebhookIdEventTypes = <ThrowOnError extends boolean = false>(options: Options<GetV1WebhooksByWebhookIdEventTypesData, ThrowOnError>): RequestResult<GetV1WebhooksByWebhookIdEventTypesResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1WebhooksByWebhookIdEventTypesResponses, unknown, ThrowOnError>({ url: '/v1/webhooks/{webhookId}/event-types', ...options });
+
+/**
+ * Simulate webhook event
+ *
+ * Making a request to this endpoint will trigger a test webhook for the specified event.
+ * This can be very useful when testing the setup that processes webhooks on your end.
+ * Will use random resource ids for the event.
+ */
+export const postV1WebhooksByWebhookIdSimulate = <ThrowOnError extends boolean = false>(options: Options<PostV1WebhooksByWebhookIdSimulateData, ThrowOnError>): RequestResult<PostV1WebhooksByWebhookIdSimulateResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1WebhooksByWebhookIdSimulateResponses, unknown, ThrowOnError>({
+    url: '/v1/webhooks/{webhookId}/simulate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete quota
+ */
+export const deleteV1ProjectsByProjectIdQuota = <ThrowOnError extends boolean = false>(options: Options<DeleteV1ProjectsByProjectIdQuotaData, ThrowOnError>): RequestResult<DeleteV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError> => (options.client ?? client).delete<DeleteV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/quota', ...options });
+
+/**
+ * Retrieve quota
+ */
+export const getV1ProjectsByProjectIdQuota = <ThrowOnError extends boolean = false>(options: Options<GetV1ProjectsByProjectIdQuotaData, ThrowOnError>): RequestResult<GetV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError>({ url: '/v1/projects/{projectId}/quota', ...options });
+
+/**
+ * Update quota
+ */
+export const patchV1ProjectsByProjectIdQuota = <ThrowOnError extends boolean = false>(options: Options<PatchV1ProjectsByProjectIdQuotaData, ThrowOnError>): RequestResult<PatchV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError> => (options.client ?? client).patch<PatchV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/quota',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Create quota
+ */
+export const postV1ProjectsByProjectIdQuota = <ThrowOnError extends boolean = false>(options: Options<PostV1ProjectsByProjectIdQuotaData, ThrowOnError>): RequestResult<PostV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostV1ProjectsByProjectIdQuotaResponses, unknown, ThrowOnError>({
+    url: '/v1/projects/{projectId}/quota',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

@@ -127,7 +127,20 @@ only check that `engines.node` is true.
 - Prettier formatting: no semicolons, single quotes, trailing commas.
 - Never hand-edit `src/generated/**` or `schemas/openapi.json`; change
   `scripts/normalize-openapi.ts` or `openapi-ts.config.ts` and regenerate.
-- Never expose the API credentials on an enumerable property; they live in
-  `#private` fields, and errors carry a redacted request summary.
+- Never expose the API credentials on an enumerable property. Each module holds
+  its configured client and its credential headers in `#private` fields, no
+  runtime accessor reaches either, and errors carry a redacted request summary.
+- The `@hey-api/sdk` plugin stays on `strategy: 'flat'`. The class strategies
+  emit a public static `__registry` of every instance ever constructed, and each
+  instance holds its configured client, so reading `client.getConfig().headers`
+  off a registered instance hands any caller `x-api-key` and `x-api-secret` in
+  plain text. Flat functions take the client as an argument, so the configured
+  one never leaves a `#private` field.
+- Errors expose a redacted request summary, never a `Request` or a `Response`.
+  Anything the SERVER wrote — allow-listed response header values, the status
+  text, and the payload, out of which the message, code and detail are read — is
+  scrubbed of both credentials with `redactCredentials` before it goes on the
+  error. A response header name outside the allow-list is dropped with its
+  value. `cause` is the underlying error, attached unchanged.
 
 Keep this file up to date whenever the workflow changes.

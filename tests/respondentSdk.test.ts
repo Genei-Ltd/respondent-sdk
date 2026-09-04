@@ -1,5 +1,6 @@
 import { inspect } from 'node:util'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as rootExports from '../src/index'
 import {
   RESPONDENT_PRODUCTION_BASE_URL,
   RESPONDENT_STAGING_BASE_URL,
@@ -71,6 +72,38 @@ describe('RespondentSdk construction', () => {
           timeoutMs: 0,
         }),
     ).toThrow('RespondentSdk timeoutMs must be a positive number')
+  })
+
+  it('rejects a timeout above the largest delay setTimeout honours', () => {
+    // `setTimeout` wraps a delay above 2_147_483_647ms round to 1ms, so a
+    // caller asking for a very long deadline would otherwise have every
+    // request aborted almost at once.
+    expect(
+      () =>
+        new RespondentSdk({
+          apiKey: API_KEY,
+          apiSecret: API_SECRET,
+          timeoutMs: 2_147_483_648,
+        }),
+    ).toThrow(/at most 2147483647ms/)
+    expect(
+      () =>
+        new RespondentSdk({
+          apiKey: API_KEY,
+          apiSecret: API_SECRET,
+          timeoutMs: Number.MAX_SAFE_INTEGER,
+        }),
+    ).toThrow(/at most 2147483647ms/)
+
+    // The boundary itself is still accepted.
+    expect(
+      () =>
+        new RespondentSdk({
+          apiKey: API_KEY,
+          apiSecret: API_SECRET,
+          timeoutMs: 2_147_483_647,
+        }),
+    ).not.toThrow()
   })
 })
 
@@ -144,6 +177,76 @@ describe('credential exposure', () => {
     )
     expect(error.request?.headers['x-api-key']).toBe('[redacted]')
     expect(error.request?.headers['x-api-secret']).toBe('[redacted]')
+  })
+})
+
+describe('credentials are scrubbed from server-controlled text', () => {
+  // The request-header allow-list keeps the credentials out of the request
+  // summary, but response headers, the payload and everything read out of it
+  // are written by the server.
+
+  const containsCredentials = (value: string) =>
+    value.includes(API_KEY) || value.includes(API_SECRET)
+
+  it('scrubs an allow-listed identifier header that echoes a credential', async () => {
+    stubFetch(
+      (request) =>
+        new Response(JSON.stringify({ error: 'boom' }), {
+          status: 500,
+          headers: {
+            'content-type': 'application/json',
+            // `x-request-id` is on the allow-list, so its value survives
+            // redaction. A gateway that builds the id out of the inbound
+            // request puts the credential straight into it.
+            'x-request-id': `req_${String(request.headers.get('x-api-key'))}`,
+            // Not on the allow-list, so it is dropped, name included.
+            'x-debug-api-secret': String(request.headers.get('x-api-secret')),
+          },
+        }),
+    )
+
+    const error: unknown = await createSdk()
+      .projects.list()
+      .catch((caught: unknown) => caught)
+
+    if (!(error instanceof RespondentSdkApiError)) {
+      throw new Error('expected a RespondentSdkApiError')
+    }
+
+    expect(error.responseHeaders['x-request-id']).toBe('req_[redacted]')
+    expect(error.responseHeaders).not.toHaveProperty('x-debug-api-secret')
+    expect(error.responseHeaders['content-type']).toContain('application/json')
+
+    expect(containsCredentials(JSON.stringify(error))).toBe(false)
+    expect(containsCredentials(inspect(error, { depth: null }))).toBe(false)
+  })
+
+  it('scrubs an error message, code and detail that echo the credentials', async () => {
+    stubFetch((request) =>
+      jsonResponse(
+        {
+          error: `Unrecognised key ${String(request.headers.get('x-api-key'))}`,
+          detail: `and secret ${String(request.headers.get('x-api-secret'))}`,
+        },
+        { status: 401, statusText: 'Unauthorized' },
+      ),
+    )
+
+    const error: unknown = await createSdk()
+      .projects.list()
+      .catch((caught: unknown) => caught)
+
+    if (!(error instanceof RespondentSdkApiError)) {
+      throw new Error('expected a RespondentSdkApiError')
+    }
+
+    expect(error.message).toBe('Unrecognised key [redacted]')
+    expect(error.code).toBe('Unrecognised key [redacted]')
+    expect(error.detail).toBe('and secret [redacted]')
+    expect(containsCredentials(JSON.stringify(error.payload))).toBe(false)
+    expect(containsCredentials(JSON.stringify(error))).toBe(false)
+    expect(containsCredentials(inspect(error, { depth: null }))).toBe(false)
+    expect(containsCredentials(String(error.stack))).toBe(false)
   })
 })
 
@@ -233,5 +336,73 @@ describe('error handling', () => {
     expect(error.cause).toBe(networkFailure)
     expect(error.message).toContain('fetch failed')
     expect(error.request?.headers['x-api-key']).toBe('[redacted]')
+  })
+})
+
+/**
+ * The generated SDK used to be a class holding a public static registry of
+ * every instance ever constructed, and each registered instance held its
+ * configured client, so `GeneratedRespondentSdk.__registry` reached
+ * `client.getConfig().headers` — the credentials in plain text. The generator
+ * now emits plain functions taking the client as an argument.
+ */
+describe('credentials stay out of every rendering', () => {
+  const KEY_PROBE = 'LEAK_KEY_PROBE'
+  const SECRET_PROBE = 'LEAK_SECRET_PROBE'
+
+  const probedSdk = () =>
+    new RespondentSdk({ apiKey: KEY_PROBE, apiSecret: SECRET_PROBE })
+
+  const expectNoProbe = (renderings: string[]) => {
+    for (const rendering of renderings) {
+      expect(rendering).not.toContain(KEY_PROBE)
+      expect(rendering).not.toContain(SECRET_PROBE)
+    }
+  }
+
+  it('renders the SDK instance without either credential', () => {
+    const sdk = probedSdk()
+
+    expectNoProbe([
+      inspect(sdk, { showHidden: true, depth: 10 }),
+      JSON.stringify(sdk),
+    ])
+  })
+
+  it('renders an API error without either credential', async () => {
+    stubFetch(
+      (request) =>
+        new Response(
+          JSON.stringify({
+            error: `Unrecognised key ${String(request.headers.get('x-api-key'))}`,
+            detail: `and secret ${String(request.headers.get('x-api-secret'))}`,
+          }),
+          {
+            status: 401,
+            statusText: `Unauthorized ${KEY_PROBE}`,
+            headers: {
+              'content-type': 'application/json',
+              'x-request-id': `req_${String(request.headers.get('x-api-key'))}`,
+            },
+          },
+        ),
+    )
+
+    const error: unknown = await probedSdk()
+      .projects.list()
+      .catch((caught: unknown) => caught)
+
+    if (!(error instanceof RespondentSdkApiError)) {
+      throw new Error('expected a RespondentSdkApiError')
+    }
+
+    expectNoProbe([inspect(error, { depth: 10 }), JSON.stringify(error)])
+  })
+
+  it('exports no generated class and no registry', () => {
+    const exportedNames = Object.keys(rootExports)
+
+    expect(exportedNames).not.toContain('GeneratedRespondentSdk')
+    expect(exportedNames).not.toContain('__registry')
   })
 })
