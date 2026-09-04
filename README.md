@@ -627,6 +627,8 @@ vendored file ever drifts out of that normal form.
   dev toolchain, so it also runs on Node 18. Build first.
 - `pnpm run format` – Prettier check.
 - `pnpm run build` – dual ESM/CJS bundles in `dist/` via tsdown.
+- `pnpm run prepare` – runs `build`, so the package also installs straight from
+  git (`github:Genei-Ltd/respondent-sdk#<sha>`).
 - `pnpm run check` – schema validation, `generate:check`, type-check, lint,
   format check, build, tests, then the dist smoke tests. This is what runs
   before publishing, and what CI runs.
