@@ -405,7 +405,11 @@ export class GeneratedRespondentSdk extends HeyApiClient {
         return (options.client ?? this.client).put<PutV1ProjectsByProjectIdFilesFormDataResponses, unknown, ThrowOnError>({
             ...formDataBodySerializer,
             url: '/v1/projects/{projectId}/files/form-data',
-            ...options
+            ...options,
+            headers: {
+                'Content-Type': null,
+                ...options.headers
+            }
         });
     }
     

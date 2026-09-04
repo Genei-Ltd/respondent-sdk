@@ -1,27 +1,48 @@
 /**
- * Validates the vendored OpenAPI document with `@apidevtools/swagger-parser`.
+ * Validates the vendored OpenAPI document with `@apidevtools/swagger-parser`,
+ * and checks it is still in the normal form `scripts/update-openapi.ts`
+ * produces (see `scripts/normalize-openapi.ts`).
  *
  * Usage: tsx scripts/validate-openapi.ts schemas/openapi.json [...]
  */
 import SwaggerParser from '@apidevtools/swagger-parser'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import {
+  describeNormalization,
+  isNormalizationClean,
+  normalizeOpenApiDocument,
+  type OpenApiDocument,
+} from './normalize-openapi'
+
+const isOpenApiDocument = (value: unknown): value is OpenApiDocument =>
+  typeof value === 'object' &&
+  value !== null &&
+  !Array.isArray(value) &&
+  typeof Reflect.get(value, 'openapi') === 'string'
 
 async function validateSchema(filePath: string): Promise<void> {
   const absolutePath = resolve(filePath)
   const raw = await readFile(absolutePath, 'utf-8')
   const parsed: unknown = JSON.parse(raw)
 
-  if (
-    typeof parsed !== 'object' ||
-    parsed === null ||
-    typeof (parsed as { openapi?: unknown }).openapi !== 'string'
-  ) {
+  if (!isOpenApiDocument(parsed)) {
     throw new Error(`Not an OpenAPI document: ${absolutePath}`)
   }
 
   await SwaggerParser.validate(structuredClone(parsed) as never)
-  console.log(`${filePath}: valid OpenAPI schema`)
+
+  const report = normalizeOpenApiDocument(structuredClone(parsed))
+  if (!isNormalizationClean(report)) {
+    throw new Error(
+      [
+        `${filePath}: not in normal form. Re-run \`pnpm run schema:update\`.`,
+        ...describeNormalization(report).map((line) => `  - ${line}`),
+      ].join('\n'),
+    )
+  }
+
+  console.log(`${filePath}: valid, normalised OpenAPI schema`)
 }
 
 async function main(): Promise<void> {

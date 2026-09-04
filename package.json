@@ -24,6 +24,18 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=22.18.0",
+      "onFail": "warn"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=10.0.0",
+      "onFail": "warn"
+    }
+  },
   "packageManager": "pnpm@10.33.1",
   "files": [
     "dist",
@@ -68,14 +80,15 @@
   },
   "scripts": {
     "build": "tsdown --config tsdown.config.ts",
-    "check": "pnpm run schema:validate && pnpm run tc && pnpm run lint && pnpm run format && pnpm run test run && pnpm run build",
+    "check": "pnpm run schema:validate && pnpm run generate:check && pnpm run tc && pnpm run lint && pnpm run format && pnpm run build && pnpm run test run",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "generate": "bash ./scripts/generate.sh",
+    "generate:check": "bash ./scripts/generate-check.sh",
     "lint": "eslint .",
     "openapi-ts": "openapi-ts",
     "prepublishOnly": "pnpm run check",
-    "schema:fetch": "tsx ./scripts/fetch-openapi.ts",
+    "schema:update": "tsx ./scripts/update-openapi.ts",
     "schema:validate": "tsx ./scripts/validate-openapi.ts schemas/openapi.json",
     "tc": "tsc -p tsconfig.json --pretty --noEmit",
     "test": "vitest"

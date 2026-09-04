@@ -3932,14 +3932,12 @@ export const zPutV1ProjectsByProjectIdExternalScreenerQuestionsBulkPath = z.obje
 export const zPutV1ProjectsByProjectIdExternalScreenerQuestionsBulkResponse = z.array(zExternalQuestion);
 
 export const zPutV1ProjectsByProjectIdFilesFormDataBody = z.object({
-    uploadFile: z.string().optional()
+    uploadFile: z.string()
 });
 
 export const zPutV1ProjectsByProjectIdFilesFormDataHeaders = z.object({
     'x-api-key': z.string(),
-    'x-api-secret': z.string(),
-    'Content-Type': z.string(),
-    'Content-Length': z.string()
+    'x-api-secret': z.string()
 });
 
 export const zPutV1ProjectsByProjectIdFilesFormDataPath = z.object({

@@ -329,24 +329,22 @@ class ProjectsModule extends RespondentModule {
   /**
    * Upload a project file (NDA, picture or attachment) as multipart form data.
    * The project must be in draft status, and only `nda` files are supported
-   * today.
+   * today. Accepted formats are PDF and DOCX.
    *
-   * `Content-Type` and `Content-Length` are required by the endpoint, so you
-   * must supply them yourself — the SDK cannot compute the multipart boundary
-   * on your behalf.
+   * The endpoint's description asks for `Content-Type` and `Content-Length`
+   * headers. Fetch sets both from the multipart body — including the boundary,
+   * which no caller can know in advance — so the SDK strips those two header
+   * parameters out of the vendored spec instead of asking you for values you
+   * cannot compute. See `scripts/normalize-openapi.ts`.
    */
   async uploadFile(
     projectId: string,
     body: PutV1ProjectsByProjectIdFilesFormDataData['body'],
     query: PutV1ProjectsByProjectIdFilesFormDataData['query'],
-    headers: Omit<
-      PutV1ProjectsByProjectIdFilesFormDataData['headers'],
-      typeof API_KEY_HEADER_NAME | typeof API_SECRET_HEADER_NAME
-    >,
   ): Promise<PutV1ProjectsByProjectIdFilesFormDataResponse> {
     const result = await this.sdk.putV1ProjectsByProjectIdFilesFormData<true>({
       body,
-      headers: { ...this.headers, ...headers },
+      headers: this.headers,
       path: { projectId },
       query,
     })

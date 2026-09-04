@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+#
+# Regenerates the TypeScript client from the vendored OpenAPI document.
+#
+# This never touches the network: `schemas/openapi.json` is the only input, so
+# the same commit always generates the same output. Refresh the vendored
+# document with `pnpm run schema:update`.
+#
+# Usage: bash scripts/generate.sh [output-dir]
 
 set -euo pipefail
 
@@ -7,24 +15,14 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${PROJECT_ROOT}"
 
-if [ "${NO_FETCH_SCHEMA:-0}" != "1" ]; then
-  echo "Fetching the Respondent.io Partner API OpenAPI document..."
-  pnpm exec tsx "${SCRIPT_DIR}/fetch-openapi.ts"
-else
-  echo "Skipping schema fetch (NO_FETCH_SCHEMA=1)..."
-fi
+OUTPUT_DIR="${1:-./src/generated}"
 
-echo
 echo "Validating the vendored OpenAPI document..."
 pnpm exec tsx "${SCRIPT_DIR}/validate-openapi.ts" schemas/openapi.json
 
 echo
-echo "Generating the TypeScript client with OpenAPI-ts..."
-pnpm exec openapi-ts
-
-echo
-echo "Formatting generated output..."
-pnpm exec prettier --write src/generated --log-level warn
+echo "Generating the TypeScript client into ${OUTPUT_DIR} with OpenAPI-ts..."
+RESPONDENT_GENERATED_OUTPUT="${OUTPUT_DIR}" pnpm exec openapi-ts
 
 echo
 echo "Done."

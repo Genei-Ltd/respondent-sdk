@@ -3931,13 +3931,11 @@ export type PutV1ProjectsByProjectIdExternalScreenerQuestionsBulkResponse = PutV
 
 export type PutV1ProjectsByProjectIdFilesFormDataData = {
     body: {
-        uploadFile?: Blob | File;
+        uploadFile: Blob | File;
     };
     headers: {
         'x-api-key': string;
         'x-api-secret': string;
-        'Content-Type': string;
-        'Content-Length': string;
     };
     path: {
         projectId: string;

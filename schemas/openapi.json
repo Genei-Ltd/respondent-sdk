@@ -1700,22 +1700,6 @@
               ],
               "type": "string"
             }
-          },
-          {
-            "name": "Content-Type",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "Content-Length",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "requestBody": {
@@ -1729,7 +1713,10 @@
                     "type": "string",
                     "format": "binary"
                   }
-                }
+                },
+                "required": [
+                  "uploadFile"
+                ]
               }
             }
           }

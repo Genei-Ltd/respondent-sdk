@@ -1,3 +1,5 @@
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import js from '@eslint/js'
 import prettierConfig from 'eslint-config-prettier/flat'
 import globals from 'globals'
@@ -38,7 +40,8 @@ export default defineConfig([
       globals: globals.node,
       parserOptions: {
         projectService: true,
-        tsconfigRootDir: import.meta.dirname,
+        // `import.meta.dirname` needs Node 20.11+; this works on Node 18 too.
+        tsconfigRootDir: dirname(fileURLToPath(import.meta.url)),
       },
     },
     rules: {
