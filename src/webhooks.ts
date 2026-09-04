@@ -42,9 +42,28 @@ export type ParsedWebhookSignature = {
 }
 
 /**
+ * Standard base64, padded. `Buffer.from(value, 'base64')` ignores characters
+ * outside the alphabet and stops at the first `=`, so it happily decodes
+ * `<valid signature>garbage` to the valid signature. Reject anything that is
+ * not exactly one padded base64 string before decoding.
+ */
+const BASE64_PATTERN =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+
+const decodeStrictBase64 = (value: string): Buffer | undefined => {
+  if (value.length === 0 || !BASE64_PATTERN.test(value)) {
+    return undefined
+  }
+  return Buffer.from(value, 'base64')
+}
+
+/**
  * Split a `Respondent-Webhook-Signature` header into its algorithm prefix and
- * its base64 digest. Returns `undefined` when the header is missing or is not
- * in `<algorithm>=<signature>` form.
+ * its base64 digest.
+ *
+ * Returns `undefined` when the header is missing, is not in
+ * `<algorithm>=<signature>` form, or carries a digest that is not strict
+ * padded base64.
  */
 export const parseWebhookSignatureHeader = (
   header: string | null | undefined,
@@ -61,54 +80,64 @@ export const parseWebhookSignatureHeader = (
   const algorithm = header.slice(0, separatorIndex).trim().toLowerCase()
   const signature = header.slice(separatorIndex + 1).trim()
 
-  if (algorithm.length === 0 || signature.length === 0) {
+  if (algorithm.length === 0 || !decodeStrictBase64(signature)) {
     return undefined
   }
 
   return { algorithm, signature }
 }
 
-/**
- * Read the signature header from a `Headers` instance or a plain header map,
- * ignoring case.
- */
-export const getWebhookSignatureHeader = (
+const readSignatureHeaderValues = (
   headers: Headers | Record<string, string | string[] | undefined>,
-): string | undefined => {
+): string[] => {
   if (headers instanceof Headers) {
-    return headers.get(RESPONDENT_WEBHOOK_SIGNATURE_HEADER) ?? undefined
+    const raw = headers.get(RESPONDENT_WEBHOOK_SIGNATURE_HEADER)
+    // `Headers.get` joins repeated values with `, `. Neither an algorithm name
+    // nor a base64 digest can contain a comma, so splitting on it is enough to
+    // notice that the delivery carried more than one signature header.
+    return raw === null ? [] : raw.split(',')
   }
 
+  const values: string[] = []
   for (const [name, value] of Object.entries(headers)) {
     if (name.toLowerCase() !== RESPONDENT_WEBHOOK_SIGNATURE_HEADER) {
       continue
     }
     if (Array.isArray(value)) {
-      return value[0]
+      values.push(...value)
+    } else if (value !== undefined) {
+      values.push(...value.split(','))
     }
-    return value
   }
+  return values
+}
 
-  return undefined
+/**
+ * Read the signature header from a `Headers` instance or a plain header map,
+ * ignoring case.
+ *
+ * A delivery must carry exactly one signature header. A repeated header would
+ * let an attacker present their own value alongside the real one and hope the
+ * wrong one is checked, so a repeated header reads as missing.
+ */
+export const getWebhookSignatureHeader = (
+  headers: Headers | Record<string, string | string[] | undefined>,
+): string | undefined => {
+  const values = readSignatureHeaderValues(headers)
+  return values.length === 1 ? values[0] : undefined
 }
 
 export type VerifyWebhookSignatureOptions = {
-  /**
-   * The delivered request body.
-   *
-   * Prefer the raw body exactly as received (a string or the request bytes).
-   * An object is accepted for convenience and is serialised with
-   * `JSON.stringify`, which is what the provider's sample does — but that only
-   * matches when your re-serialisation is byte-identical to theirs, so raw
-   * bytes are safer.
-   */
-  payload: string | Uint8Array | object
   /**
    * The raw `Respondent-Webhook-Signature` header value, in
    * `<algorithm>=<base64 signature>` form.
    */
   signatureHeader: string | null | undefined
-  /** The `privateKey` returned when the webhook was created. */
+  /**
+   * The webhook's `privateKey`. It is returned when the webhook is created, and
+   * again by `GET /v1/webhooks` and `GET /v1/webhooks/{webhookId}`, so a lost
+   * key can be read back rather than re-created.
+   */
   privateKey: string
   /**
    * Algorithms this call will accept. Defaults to
@@ -117,40 +146,21 @@ export type VerifyWebhookSignatureOptions = {
   allowedAlgorithms?: readonly string[]
 }
 
-const toSignedBytes = (payload: string | Uint8Array | object): Uint8Array => {
-  if (typeof payload === 'string') {
-    return new TextEncoder().encode(payload)
-  }
-  if (payload instanceof Uint8Array) {
-    return payload
-  }
-  return new TextEncoder().encode(JSON.stringify(payload))
-}
-
-/**
- * Verify a Respondent webhook delivery.
- *
- * The provider signs the request body with HMAC, keyed by the webhook's
- * `privateKey`, and sends the base64 digest in the
- * `Respondent-Webhook-Signature` header prefixed by the algorithm name.
- *
- * The provider documents no timestamp header and no replay protection. Use the
- * `uuid` on the event body to deduplicate deliveries yourself.
- *
- * @see https://developers.respondent.io/docs/Webhooks/webhooks
- */
-export const verifyWebhookSignature = ({
-  payload,
-  signatureHeader,
-  privateKey,
-  allowedAlgorithms = DEFAULT_ALLOWED_SIGNATURE_ALGORITHMS,
-}: VerifyWebhookSignatureOptions): boolean => {
+const verifyBytes = (
+  signed: Uint8Array,
+  {
+    signatureHeader,
+    privateKey,
+    allowedAlgorithms,
+  }: VerifyWebhookSignatureOptions,
+): boolean => {
   const parsed = parseWebhookSignatureHeader(signatureHeader)
   if (!parsed) {
     return false
   }
 
-  if (!allowedAlgorithms.includes(parsed.algorithm)) {
+  const allowed = allowedAlgorithms ?? DEFAULT_ALLOWED_SIGNATURE_ALGORITHMS
+  if (!allowed.includes(parsed.algorithm)) {
     return false
   }
 
@@ -158,20 +168,16 @@ export const verifyWebhookSignature = ({
     return false
   }
 
-  let expected: Buffer
-  try {
-    expected = createHmac(parsed.algorithm, privateKey)
-      .update(toSignedBytes(payload))
-      .digest()
-  } catch {
-    // `createHmac` throws for algorithms OpenSSL does not know.
+  const received = decodeStrictBase64(parsed.signature)
+  if (!received) {
     return false
   }
 
-  let received: Buffer
+  let expected: Buffer
   try {
-    received = Buffer.from(parsed.signature, 'base64')
+    expected = createHmac(parsed.algorithm, privateKey).update(signed).digest()
   } catch {
+    // `createHmac` throws for algorithms OpenSSL does not know.
     return false
   }
 
@@ -180,6 +186,76 @@ export const verifyWebhookSignature = ({
   }
 
   return timingSafeEqual(received, expected)
+}
+
+export type VerifyWebhookSignatureFromRawBodyOptions =
+  VerifyWebhookSignatureOptions & {
+    /**
+     * The delivered body exactly as it arrived on the wire, before any JSON
+     * parsing — `await request.text()`, or the raw request bytes.
+     */
+    rawBody: string | Uint8Array
+  }
+
+/**
+ * Verify a Respondent webhook delivery against the bytes that were actually
+ * delivered.
+ *
+ * **Which bytes the provider signs is not documented.** Their only sample
+ * hashes `JSON.stringify(request.body)` — a parsed and re-serialised object —
+ * and they publish no example header, no algorithm and no reference delivery.
+ * Re-serialising is not guaranteed to reproduce the wire bytes, so this SDK
+ * offers both readings and does not claim either is correct:
+ *
+ * - this function hashes the wire bytes;
+ * - {@link verifyWebhookSignatureFromParsedBody} hashes
+ *   `JSON.stringify(parsedBody)`, matching the provider's sample.
+ *
+ * Start here, and settle the question with a real delivery (send one from the
+ * dashboard, or call `respondent.webhooks.simulate`) before you rely on it.
+ *
+ * The provider documents no timestamp header and no replay protection, so
+ * authenticity is all this proves. Use {@link verifyAndDedupeWebhook}, or
+ * deduplicate on the event `uuid` yourself.
+ *
+ * @see https://developers.respondent.io/docs/Webhooks/webhooks
+ */
+export const verifyWebhookSignatureFromRawBody = ({
+  rawBody,
+  ...options
+}: VerifyWebhookSignatureFromRawBodyOptions): boolean =>
+  verifyBytes(
+    typeof rawBody === 'string' ? new TextEncoder().encode(rawBody) : rawBody,
+    options,
+  )
+
+export type VerifyWebhookSignatureFromParsedBodyOptions =
+  VerifyWebhookSignatureOptions & {
+    /** The delivery body after `JSON.parse`. */
+    parsedBody: unknown
+  }
+
+/**
+ * Verify a Respondent webhook delivery the way the provider's sample does, by
+ * hashing `JSON.stringify(parsedBody)`.
+ *
+ * This only matches when your re-serialisation reproduces the exact bytes the
+ * provider hashed: key order survives `JSON.parse` / `JSON.stringify`, but
+ * whitespace, escaping and number formatting do not have to. Prefer
+ * {@link verifyWebhookSignatureFromRawBody} unless a real delivery shows this
+ * form is the one that verifies.
+ *
+ * @see https://developers.respondent.io/docs/Webhooks/webhooks
+ */
+export const verifyWebhookSignatureFromParsedBody = ({
+  parsedBody,
+  ...options
+}: VerifyWebhookSignatureFromParsedBodyOptions): boolean => {
+  const serialized = JSON.stringify(parsedBody)
+  if (typeof serialized !== 'string') {
+    return false
+  }
+  return verifyBytes(new TextEncoder().encode(serialized), options)
 }
 
 // ============================================================================
@@ -395,3 +471,100 @@ export const UnknownWebhookEvent = z.looseObject({
   created: z.string(),
   payload: z.unknown(),
 })
+
+// ============================================================================
+// Replay-safe delivery handling
+// ============================================================================
+
+/**
+ * Records that a delivery `uuid` has been seen, and reports whether it is new.
+ *
+ * The check and the insert must be one atomic step in your store — a unique
+ * index and an "insert, ignore conflict" statement, or `SETNX` — otherwise two
+ * concurrent copies of the same replayed delivery both look new.
+ *
+ * ```ts
+ * const recordDelivery = async (uuid: string) => {
+ *   const inserted = await db
+ *     .insertInto('respondent_webhook_delivery')
+ *     .values({ uuid })
+ *     .onConflict((c) => c.column('uuid').doNothing())
+ *     .executeTakeFirst()
+ *   return inserted.numInsertedOrUpdatedRows === 1n
+ * }
+ * ```
+ */
+export type WebhookDeliveryRecorder = (
+  uuid: string,
+) => boolean | Promise<boolean>
+
+/**
+ * What {@link verifyAndDedupeWebhook} decided about a delivery.
+ */
+export type WebhookDeliveryOutcome =
+  | {
+      /** Signature verified, body parsed, and the `uuid` had not been seen. */
+      status: 'accepted'
+      uuid: string
+      /**
+       * The delivery body. Narrow it to a known event with
+       * `WebhookEvent.safeParse(outcome.event)`.
+       */
+      event: UnknownWebhookEvent
+    }
+  | { status: 'invalid_signature' }
+  | { status: 'malformed_body'; cause: unknown }
+  | {
+      /** The signature was valid but this `uuid` was already processed. */
+      status: 'duplicate'
+      uuid: string
+    }
+
+const decodeRawBody = (rawBody: string | Uint8Array): string =>
+  typeof rawBody === 'string' ? rawBody : new TextDecoder().decode(rawBody)
+
+export type VerifyAndDedupeWebhookOptions =
+  VerifyWebhookSignatureFromRawBodyOptions & {
+    /** Atomically record the delivery `uuid`; see {@link WebhookDeliveryRecorder}. */
+    recordDelivery: WebhookDeliveryRecorder
+  }
+
+/**
+ * Verify a delivery, parse it, and reject replays in one step.
+ *
+ * HMAC proves the delivery came from someone holding the `privateKey`; it does
+ * not prove the delivery is fresh. The provider sends no timestamp header, and
+ * retries up to five times, so a captured delivery stays valid forever unless
+ * you record what you have already processed. `recordDelivery` is where you do
+ * that — atomically — and the outcome tells you whether to act on the event.
+ *
+ * Verification uses the raw wire bytes; see
+ * {@link verifyWebhookSignatureFromRawBody} for why that choice is not settled.
+ */
+export const verifyAndDedupeWebhook = async ({
+  recordDelivery,
+  ...options
+}: VerifyAndDedupeWebhookOptions): Promise<WebhookDeliveryOutcome> => {
+  if (!verifyWebhookSignatureFromRawBody(options)) {
+    return { status: 'invalid_signature' }
+  }
+
+  let body: unknown
+  try {
+    body = JSON.parse(decodeRawBody(options.rawBody))
+  } catch (cause: unknown) {
+    return { status: 'malformed_body', cause }
+  }
+
+  const parsed = UnknownWebhookEvent.safeParse(body)
+  if (!parsed.success) {
+    return { status: 'malformed_body', cause: parsed.error }
+  }
+
+  const { uuid } = parsed.data
+  if (!(await recordDelivery(uuid))) {
+    return { status: 'duplicate', uuid }
+  }
+
+  return { status: 'accepted', uuid, event: parsed.data }
+}

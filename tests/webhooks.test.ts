@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   ConversationsCreatedEvent,
   ProjectsUpdatedEvent,
@@ -9,7 +9,9 @@ import {
   WebhookEvent,
   getWebhookSignatureHeader,
   parseWebhookSignatureHeader,
-  verifyWebhookSignature,
+  verifyAndDedupeWebhook,
+  verifyWebhookSignatureFromParsedBody,
+  verifyWebhookSignatureFromRawBody,
 } from '../src/webhooks'
 
 const PRIVATE_KEY = '44450f9c-f43c-4c26-98cb-53bdc0f49fde'
@@ -34,9 +36,13 @@ const sign = (body: string, algorithm = 'sha256', key = PRIVATE_KEY) =>
 
 describe('parseWebhookSignatureHeader', () => {
   it('splits the algorithm prefix from the digest', () => {
-    expect(parseWebhookSignatureHeader('sha256=abc123')).toEqual({
+    const digest = createHmac('sha256', PRIVATE_KEY)
+      .update(RAW_BODY)
+      .digest('base64')
+
+    expect(parseWebhookSignatureHeader(`sha256=${digest}`)).toEqual({
       algorithm: 'sha256',
-      signature: 'abc123',
+      signature: digest,
     })
   })
 
@@ -46,6 +52,20 @@ describe('parseWebhookSignatureHeader', () => {
     expect(parseWebhookSignatureHeader('no-separator')).toBeUndefined()
     expect(parseWebhookSignatureHeader('=abc123')).toBeUndefined()
     expect(parseWebhookSignatureHeader('sha256=')).toBeUndefined()
+  })
+
+  it('rejects digests that are not strict base64', () => {
+    const digest = createHmac('sha256', PRIVATE_KEY)
+      .update(RAW_BODY)
+      .digest('base64')
+
+    // `Buffer.from(..., 'base64')` would silently ignore all of these.
+    expect(parseWebhookSignatureHeader(`sha256=${digest}!!!`)).toBeUndefined()
+    expect(
+      parseWebhookSignatureHeader(`sha256=${digest} trailing`),
+    ).toBeUndefined()
+    expect(parseWebhookSignatureHeader('sha256=abc123')).toBeUndefined()
+    expect(parseWebhookSignatureHeader('sha256=****')).toBeUndefined()
   })
 })
 
@@ -64,24 +84,32 @@ describe('getWebhookSignatureHeader', () => {
     })
     expect(getWebhookSignatureHeader(headers)).toBe('sha256=abc')
   })
+
+  it('treats a repeated header as missing', () => {
+    const headers = new Headers()
+    headers.append(RESPONDENT_WEBHOOK_SIGNATURE_HEADER, 'sha256=abc')
+    headers.append(RESPONDENT_WEBHOOK_SIGNATURE_HEADER, 'sha256=def')
+
+    expect(getWebhookSignatureHeader(headers)).toBeUndefined()
+    expect(
+      getWebhookSignatureHeader({
+        'respondent-webhook-signature': ['sha256=abc', 'sha256=def'],
+      }),
+    ).toBeUndefined()
+    expect(
+      getWebhookSignatureHeader({
+        'respondent-webhook-signature': 'sha256=abc, sha256=def',
+      }),
+    ).toBeUndefined()
+  })
 })
 
-describe('verifyWebhookSignature', () => {
+describe('verifyWebhookSignatureFromRawBody', () => {
   it('accepts a known-good signature over the raw body', () => {
     expect(
-      verifyWebhookSignature({
-        payload: RAW_BODY,
+      verifyWebhookSignatureFromRawBody({
+        rawBody: RAW_BODY,
         signatureHeader: sign(RAW_BODY),
-        privateKey: PRIVATE_KEY,
-      }),
-    ).toBe(true)
-  })
-
-  it('accepts an object payload, matching the provider sample', () => {
-    expect(
-      verifyWebhookSignature({
-        payload: EVENT,
-        signatureHeader: sign(JSON.stringify(EVENT)),
         privateKey: PRIVATE_KEY,
       }),
     ).toBe(true)
@@ -89,8 +117,8 @@ describe('verifyWebhookSignature', () => {
 
   it('accepts raw bytes', () => {
     expect(
-      verifyWebhookSignature({
-        payload: new TextEncoder().encode(RAW_BODY),
+      verifyWebhookSignatureFromRawBody({
+        rawBody: new TextEncoder().encode(RAW_BODY),
         signatureHeader: sign(RAW_BODY),
         privateKey: PRIVATE_KEY,
       }),
@@ -106,8 +134,8 @@ describe('verifyWebhookSignature', () => {
 
     expect(tampered).not.toBe(RAW_BODY)
     expect(
-      verifyWebhookSignature({
-        payload: tampered,
+      verifyWebhookSignatureFromRawBody({
+        rawBody: tampered,
         signatureHeader: signature,
         privateKey: PRIVATE_KEY,
       }),
@@ -116,8 +144,8 @@ describe('verifyWebhookSignature', () => {
 
   it('rejects a signature made with a different key', () => {
     expect(
-      verifyWebhookSignature({
-        payload: RAW_BODY,
+      verifyWebhookSignatureFromRawBody({
+        rawBody: RAW_BODY,
         signatureHeader: sign(RAW_BODY, 'sha256', 'not-the-private-key'),
         privateKey: PRIVATE_KEY,
       }),
@@ -126,16 +154,26 @@ describe('verifyWebhookSignature', () => {
 
   it('rejects a missing or malformed header', () => {
     expect(
-      verifyWebhookSignature({
-        payload: RAW_BODY,
+      verifyWebhookSignatureFromRawBody({
+        rawBody: RAW_BODY,
         signatureHeader: undefined,
         privateKey: PRIVATE_KEY,
       }),
     ).toBe(false)
     expect(
-      verifyWebhookSignature({
-        payload: RAW_BODY,
+      verifyWebhookSignatureFromRawBody({
+        rawBody: RAW_BODY,
         signatureHeader: 'nonsense',
+        privateKey: PRIVATE_KEY,
+      }),
+    ).toBe(false)
+  })
+
+  it('rejects a valid signature with trailing junk appended', () => {
+    expect(
+      verifyWebhookSignatureFromRawBody({
+        rawBody: RAW_BODY,
+        signatureHeader: `${sign(RAW_BODY)}garbage`,
         privateKey: PRIVATE_KEY,
       }),
     ).toBe(false)
@@ -144,8 +182,8 @@ describe('verifyWebhookSignature', () => {
   it('rejects an algorithm outside the allow list', () => {
     // The header names the algorithm, so a downgrade must not be honoured.
     expect(
-      verifyWebhookSignature({
-        payload: RAW_BODY,
+      verifyWebhookSignatureFromRawBody({
+        rawBody: RAW_BODY,
         signatureHeader: sign(RAW_BODY, 'md5'),
         privateKey: PRIVATE_KEY,
       }),
@@ -154,8 +192,8 @@ describe('verifyWebhookSignature', () => {
 
   it('honours an explicitly widened allow list', () => {
     expect(
-      verifyWebhookSignature({
-        payload: RAW_BODY,
+      verifyWebhookSignatureFromRawBody({
+        rawBody: RAW_BODY,
         signatureHeader: sign(RAW_BODY, 'sha1'),
         privateKey: PRIVATE_KEY,
         allowedAlgorithms: ['sha1'],
@@ -165,12 +203,111 @@ describe('verifyWebhookSignature', () => {
 
   it('rejects an empty private key', () => {
     expect(
-      verifyWebhookSignature({
-        payload: RAW_BODY,
+      verifyWebhookSignatureFromRawBody({
+        rawBody: RAW_BODY,
         signatureHeader: sign(RAW_BODY),
         privateKey: '',
       }),
     ).toBe(false)
+  })
+})
+
+describe('verifyWebhookSignatureFromParsedBody', () => {
+  it('accepts a signature over JSON.stringify(parsedBody)', () => {
+    expect(
+      verifyWebhookSignatureFromParsedBody({
+        parsedBody: EVENT,
+        signatureHeader: sign(JSON.stringify(EVENT)),
+        privateKey: PRIVATE_KEY,
+      }),
+    ).toBe(true)
+  })
+
+  it('does not match a body whose wire bytes differ from its re-serialisation', () => {
+    // The provider never states which bytes it signs, so the two helpers are
+    // genuinely different checks — this is why they are separate functions.
+    const spacedBody = JSON.stringify(EVENT, null, 2)
+    const signature = sign(spacedBody)
+
+    expect(
+      verifyWebhookSignatureFromRawBody({
+        rawBody: spacedBody,
+        signatureHeader: signature,
+        privateKey: PRIVATE_KEY,
+      }),
+    ).toBe(true)
+    expect(
+      verifyWebhookSignatureFromParsedBody({
+        parsedBody: JSON.parse(spacedBody),
+        signatureHeader: signature,
+        privateKey: PRIVATE_KEY,
+      }),
+    ).toBe(false)
+  })
+})
+
+describe('verifyAndDedupeWebhook', () => {
+  const seen = () => {
+    const uuids = new Set<string>()
+    return {
+      uuids,
+      recordDelivery: vi.fn((uuid: string) => {
+        if (uuids.has(uuid)) {
+          return false
+        }
+        uuids.add(uuid)
+        return true
+      }),
+    }
+  }
+
+  it('accepts a first delivery and reports a replay of the same uuid', async () => {
+    const store = seen()
+    const options = {
+      rawBody: RAW_BODY,
+      signatureHeader: sign(RAW_BODY),
+      privateKey: PRIVATE_KEY,
+      recordDelivery: store.recordDelivery,
+    }
+
+    const first = await verifyAndDedupeWebhook(options)
+    expect(first).toEqual({
+      status: 'accepted',
+      uuid: EVENT.uuid,
+      event: EVENT,
+    })
+
+    const replay = await verifyAndDedupeWebhook(options)
+    expect(replay).toEqual({ status: 'duplicate', uuid: EVENT.uuid })
+  })
+
+  it('rejects a bad signature without touching the replay store', async () => {
+    const store = seen()
+
+    expect(
+      await verifyAndDedupeWebhook({
+        rawBody: RAW_BODY,
+        signatureHeader: sign(RAW_BODY, 'sha256', 'wrong-key'),
+        privateKey: PRIVATE_KEY,
+        recordDelivery: store.recordDelivery,
+      }),
+    ).toEqual({ status: 'invalid_signature' })
+    expect(store.recordDelivery).not.toHaveBeenCalled()
+  })
+
+  it('reports a body that is signed but not a webhook event', async () => {
+    const store = seen()
+    const rawBody = '{"not":"an event"}'
+
+    const outcome = await verifyAndDedupeWebhook({
+      rawBody,
+      signatureHeader: sign(rawBody),
+      privateKey: PRIVATE_KEY,
+      recordDelivery: store.recordDelivery,
+    })
+
+    expect(outcome.status).toBe('malformed_body')
+    expect(store.recordDelivery).not.toHaveBeenCalled()
   })
 })
 
