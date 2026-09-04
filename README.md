@@ -149,21 +149,25 @@ redirected request fails with a `RespondentSdkTransportError` instead.
 
 ## Error handling
 
-Every failure raises a subclass of `RespondentSdkError`, so the failure modes
-are distinguishable:
+Every SDK-originated failure raises a subclass of `RespondentSdkError`, so the
+failure modes are distinguishable:
 
-| Error                         | Raised when                                                              |
-| ----------------------------- | ------------------------------------------------------------------------ |
-| `RespondentSdkApiError`       | the API answered with a non-2xx status (`status`, `payload`, `response`) |
-| `RespondentSdkTransportError` | no response arrived — DNS, connection reset, or a refused redirect       |
-| `RespondentSdkResponseError`  | a success status whose body could not be decoded (invalid JSON on a 200) |
-| `RespondentSdkTimeoutError`   | the configured `timeoutMs` elapsed                                       |
+| Error                         | Raised when                                                              | `cause`                    |
+| ----------------------------- | ------------------------------------------------------------------------ | -------------------------- |
+| `RespondentSdkApiError`       | the API answered with a non-2xx status (`status`, `payload`, `response`) | none — read `payload`      |
+| `RespondentSdkTransportError` | no response arrived — DNS, connection reset, or a refused redirect       | the underlying fetch error |
+| `RespondentSdkResponseError`  | a success status whose body could not be decoded (invalid JSON on a 200) | the `SyntaxError`          |
+| `RespondentSdkTimeoutError`   | the configured `timeoutMs` elapsed                                       | none — read `timeoutMs`    |
 
-Each carries the underlying failure on `cause` and a redacted request summary on
-`request` (`url`, `method`, and headers with `x-api-key` / `x-api-secret`
-replaced by `[redacted]`). `isRespondentSdkError` matches any of them;
-`isRespondentSdkApiError`, `isRespondentSdkTransportError`,
-`isRespondentSdkResponseError` and `isRespondentSdkTimeoutError` narrow.
+One failure is deliberately not an SDK error: when you abort a call through your
+own `AbortSignal`, it rejects with your `signal.reason` exactly as you set it.
+
+Each SDK error carries a redacted request summary on `request` (`url`, `method`,
+and headers with `x-api-key` / `x-api-secret` replaced by `[redacted]`), and
+carries `cause` only where an underlying error exists.
+`isRespondentSdkError` matches any of them; `isRespondentSdkApiError`,
+`isRespondentSdkTransportError`, `isRespondentSdkResponseError` and
+`isRespondentSdkTimeoutError` narrow.
 
 ```ts
 import {
