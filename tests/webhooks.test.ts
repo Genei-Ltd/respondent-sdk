@@ -13,6 +13,7 @@ import {
   verifyWebhookSignatureFromParsedBody,
   verifyWebhookSignatureFromRawBody,
 } from '../src/webhooks'
+import type { WebhookDeliveryClaim } from '../src/webhooks'
 
 const PRIVATE_KEY = '44450f9c-f43c-4c26-98cb-53bdc0f49fde'
 
@@ -247,67 +248,160 @@ describe('verifyWebhookSignatureFromParsedBody', () => {
 })
 
 describe('verifyAndDedupeWebhook', () => {
-  const seen = () => {
-    const uuids = new Set<string>()
+  /**
+   * The inbox the README documents: one row per delivery, holding the whole
+   * event, written and claimed in the same step.
+   */
+  const inbox = () => {
+    const rows = new Map<
+      string,
+      { event: UnknownWebhookEvent; processed: boolean }
+    >()
     return {
-      uuids,
-      recordDelivery: vi.fn((uuid: string) => {
-        if (uuids.has(uuid)) {
-          return false
-        }
-        uuids.add(uuid)
-        return true
-      }),
+      rows,
+      claimAndStore: vi.fn(
+        (event: UnknownWebhookEvent): WebhookDeliveryClaim => {
+          if (rows.has(event.uuid)) {
+            return 'duplicate'
+          }
+          rows.set(event.uuid, { event, processed: false })
+          return 'stored'
+        },
+      ),
     }
   }
 
-  it('accepts a first delivery and reports a replay of the same uuid', async () => {
-    const store = seen()
+  it('stores a first delivery and reports a replay of the same uuid', async () => {
+    const store = inbox()
     const options = {
       rawBody: RAW_BODY,
       signatureHeader: sign(RAW_BODY),
       privateKey: PRIVATE_KEY,
-      recordDelivery: store.recordDelivery,
+      claimAndStore: store.claimAndStore,
     }
 
     const first = await verifyAndDedupeWebhook(options)
     expect(first).toEqual({
-      status: 'accepted',
+      status: 'stored',
       uuid: EVENT.uuid,
       event: EVENT,
     })
+    expect(store.rows.get(EVENT.uuid)?.event).toEqual(EVENT)
 
     const replay = await verifyAndDedupeWebhook(options)
     expect(replay).toEqual({ status: 'duplicate', uuid: EVENT.uuid })
   })
 
-  it('rejects a bad signature without touching the replay store', async () => {
-    const store = seen()
+  it('rejects a bad signature without touching the store', async () => {
+    const store = inbox()
 
     expect(
       await verifyAndDedupeWebhook({
         rawBody: RAW_BODY,
         signatureHeader: sign(RAW_BODY, 'sha256', 'wrong-key'),
         privateKey: PRIVATE_KEY,
-        recordDelivery: store.recordDelivery,
+        claimAndStore: store.claimAndStore,
       }),
     ).toEqual({ status: 'invalid_signature' })
-    expect(store.recordDelivery).not.toHaveBeenCalled()
+    expect(store.claimAndStore).not.toHaveBeenCalled()
   })
 
   it('reports a body that is signed but not a webhook event', async () => {
-    const store = seen()
+    const store = inbox()
     const rawBody = '{"not":"an event"}'
 
     const outcome = await verifyAndDedupeWebhook({
       rawBody,
       signatureHeader: sign(rawBody),
       privateKey: PRIVATE_KEY,
-      recordDelivery: store.recordDelivery,
+      claimAndStore: store.claimAndStore,
     })
 
     expect(outcome.status).toBe('malformed_body')
-    expect(store.recordDelivery).not.toHaveBeenCalled()
+    expect(store.claimAndStore).not.toHaveBeenCalled()
+  })
+
+  it('does not lose the work when processing the stored event throws', async () => {
+    // The whole point of storing the event rather than only its uuid: the
+    // delivery survives a processor that blows up. Under the documented order
+    // — verify, store, answer 2xx, then process from the row — a throw leaves
+    // the row pending, so the work still happens.
+    const store = inbox()
+    const processed: string[] = []
+    let processorThrows = true
+
+    const processStoredRow = (uuid: string) => {
+      const row = store.rows.get(uuid)
+      if (!row) {
+        throw new Error(`nothing stored for ${uuid}`)
+      }
+      if (processorThrows) {
+        processorThrows = false
+        throw new Error('business processing failed')
+      }
+      row.processed = true
+      processed.push(uuid)
+    }
+
+    const deliver = async () => {
+      const outcome = await verifyAndDedupeWebhook({
+        rawBody: RAW_BODY,
+        signatureHeader: sign(RAW_BODY),
+        privateKey: PRIVATE_KEY,
+        claimAndStore: store.claimAndStore,
+      })
+      // The handler answers 2xx here, then processes from the stored row.
+      if (outcome.status === 'stored') {
+        try {
+          processStoredRow(outcome.uuid)
+        } catch {
+          // Left for the inbox worker to retry.
+        }
+      }
+      return outcome
+    }
+
+    expect((await deliver()).status).toBe('stored')
+    expect(processed).toEqual([])
+    expect(store.rows.get(EVENT.uuid)?.processed).toBe(false)
+
+    // The provider redelivers. The event is already stored, so this is a
+    // duplicate — and that is safe, because the work is still pending.
+    expect(await deliver()).toEqual({ status: 'duplicate', uuid: EVENT.uuid })
+
+    // Retrying from the stored row does the work, exactly once.
+    processStoredRow(EVENT.uuid)
+    expect(processed).toEqual([EVENT.uuid])
+    expect(store.rows.get(EVENT.uuid)?.processed).toBe(true)
+  })
+
+  it('claims nothing when the atomic step throws, so the retry is not a duplicate', async () => {
+    const store = inbox()
+    const options = {
+      rawBody: RAW_BODY,
+      signatureHeader: sign(RAW_BODY),
+      privateKey: PRIVATE_KEY,
+    }
+
+    await expect(
+      verifyAndDedupeWebhook({
+        ...options,
+        claimAndStore: () => {
+          throw new Error('database unavailable')
+        },
+      }),
+    ).rejects.toThrow('database unavailable')
+
+    // Nothing was written down, so the provider's retry is a fresh delivery.
+    const retry = await verifyAndDedupeWebhook({
+      ...options,
+      claimAndStore: store.claimAndStore,
+    })
+    expect(retry).toEqual({
+      status: 'stored',
+      uuid: EVENT.uuid,
+      event: EVENT,
+    })
   })
 })
 

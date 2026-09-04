@@ -288,7 +288,12 @@ Webhook payloads and the signature scheme are not in the provider's OpenAPI
 document, so `@coloop-ai/respondent-sdk/webhooks` hand-models them with Zod, and
 adds signature verification.
 
+The order matters: verify the bytes, store the event and claim its id in one
+atomic step, answer 2xx, and only then do the work — reading it back from the
+stored record.
+
 ```ts
+import type { UnknownWebhookEvent } from '@coloop-ai/respondent-sdk/webhooks'
 import {
   WebhookEvent,
   getWebhookSignatureHeader,
@@ -296,17 +301,23 @@ import {
 } from '@coloop-ai/respondent-sdk/webhooks'
 
 /**
- * Insert the delivery id, and report whether it was new. This must be ONE
- * atomic step — a unique index plus an "insert, ignore conflict" statement —
- * or two concurrent copies of the same replay both look new.
+ * Write the whole event down and claim its `uuid`, in ONE atomic step — a
+ * unique index on `uuid` plus an "insert, ignore conflict" statement that
+ * stores the payload alongside it.
+ *
+ * Inserting the `uuid` on its own is NOT "processed". It records only that the
+ * event is safely on disk. Two concurrent copies of a replay both look new if
+ * the check and the claim are separate steps.
  */
-async function recordDelivery(uuid: string) {
+async function claimAndStore(
+  event: UnknownWebhookEvent,
+): Promise<'stored' | 'duplicate'> {
   const inserted = await db
-    .insertInto('respondent_webhook_delivery')
-    .values({ uuid })
+    .insertInto('respondent_webhook_inbox')
+    .values({ uuid: event.uuid, payload: JSON.stringify(event) })
     .onConflict((c) => c.column('uuid').doNothing())
     .executeTakeFirst()
-  return inserted.numInsertedOrUpdatedRows === 1n
+  return inserted.numInsertedOrUpdatedRows === 1n ? 'stored' : 'duplicate'
 }
 
 export async function handleWebhook(request: Request) {
@@ -317,43 +328,70 @@ export async function handleWebhook(request: Request) {
     rawBody,
     signatureHeader: getWebhookSignatureHeader(request.headers),
     privateKey: process.env.RESPONDENT_WEBHOOK_PRIVATE_KEY!,
-    recordDelivery,
+    claimAndStore,
   })
 
   if (outcome.status === 'invalid_signature') {
     return new Response('Forbidden', { status: 403 })
   }
-  if (outcome.status !== 'accepted') {
-    // A duplicate or an unparseable body. Both are 2xx: the provider retries
-    // anything else, and replaying a delivery must not do the work twice.
-    return new Response('OK')
+  if (outcome.status === 'stored') {
+    // The event is on disk. Wake a worker and answer straight away: you have
+    // three seconds, and the business work does not belong in this request.
+    await enqueueWebhookWork(outcome.uuid)
   }
-
-  const parsed = WebhookEvent.safeParse(outcome.event)
-  if (!parsed.success) {
-    console.warn('Unhandled webhook payload', parsed.error)
-    return new Response('OK')
-  }
-
-  switch (parsed.data.event) {
-    case 'SCREENER_RESPONSES.CREATED': {
-      const { id, projectId } = parsed.data.payload.resource
-      // Payloads carry IDs only — fetch the response to read it.
-      const response = await respondent.screenerResponses.retrieve(
-        projectId,
-        id,
-      )
-      break
-    }
-    case 'PROJECTS.UPDATED': {
-      console.log(parsed.data.payload.resource.updatedFields)
-      break
-    }
-  }
-
+  // A duplicate or an unparseable body is 2xx too: the provider retries
+  // anything else, and a replay must not do the work twice.
   return new Response('OK')
 }
 ```
+
+The work runs from the stored record, with its own retries:
+
+```ts
+async function processStoredDelivery(uuid: string) {
+  const row = await db
+    .selectFrom('respondent_webhook_inbox')
+    .select(['payload'])
+    .where('uuid', '=', uuid)
+    .where('processedAt', 'is', null)
+    .executeTakeFirst()
+  if (!row) return // already processed, or never stored
+
+  const parsed = WebhookEvent.safeParse(JSON.parse(row.payload))
+  if (parsed.success) {
+    switch (parsed.data.event) {
+      case 'SCREENER_RESPONSES.CREATED': {
+        const { id, projectId } = parsed.data.payload.resource
+        // Payloads carry IDs only — fetch the response to read it.
+        const response = await respondent.screenerResponses.retrieve(
+          projectId,
+          id,
+        )
+        break
+      }
+      case 'PROJECTS.UPDATED': {
+        console.log(parsed.data.payload.resource.updatedFields)
+        break
+      }
+    }
+  } else {
+    console.warn('Unhandled webhook payload', parsed.error)
+  }
+
+  // Only now is the delivery processed.
+  await db
+    .updateTable('respondent_webhook_inbox')
+    .set({ processedAt: new Date() })
+    .where('uuid', '=', uuid)
+    .execute()
+}
+```
+
+Doing the business work inside the request handler, after the claim, is how a
+delivery gets lost: the `uuid` is already claimed, so when the work throws, the
+provider's retry comes back as a duplicate and the work never happens. Storing
+the event first makes that retry unnecessary — the record is on disk, and a
+throw leaves it pending for the next attempt.
 
 Verify by hand instead if you do not want the replay check:
 `verifyWebhookSignatureFromRawBody` hashes the wire bytes, and
@@ -399,7 +437,8 @@ Three gaps matter:
 3. **There is no timestamp header and no replay protection.** HMAC proves
    authenticity, not freshness, and the provider retries a delivery up to five
    times. Deduplicate on the event `uuid` — `verifyAndDedupeWebhook` does it for
-   you, given an atomic `recordDelivery` callback.
+   you, given an atomic `claimAndStore` callback that writes the event down as
+   it claims the id.
 
 Two smaller hardening notes: a delivery carrying more than one signature header
 is treated as unsigned, and a digest is decoded only if it is strict padded

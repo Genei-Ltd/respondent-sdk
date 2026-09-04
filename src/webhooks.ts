@@ -477,45 +477,71 @@ export const UnknownWebhookEvent = z.looseObject({
 // ============================================================================
 
 /**
- * Records that a delivery `uuid` has been seen, and reports whether it is new.
+ * What the caller's atomic step did with a delivery.
  *
- * The check and the insert must be one atomic step in your store — a unique
- * index and an "insert, ignore conflict" statement, or `SETNX` — otherwise two
- * concurrent copies of the same replayed delivery both look new.
+ * - `stored` — this call durably persisted the event and claimed its `uuid`.
+ * - `duplicate` — the `uuid` was already claimed, so the event is already
+ *   stored and must not be stored twice.
+ */
+export type WebhookDeliveryClaim = 'stored' | 'duplicate'
+
+/**
+ * Durably store a delivery and claim its `uuid`, in ONE atomic step.
+ *
+ * Writing the event down and claiming the `uuid` must commit together — a
+ * unique index on `uuid` plus an "insert, ignore conflict" statement that
+ * writes the whole event, or an enqueue and the claim inside one transaction.
+ * Two things go wrong otherwise:
+ *
+ * - claim and store as separate steps, and a crash between them loses the
+ *   delivery: the `uuid` is claimed, so every retry reads as a duplicate, and
+ *   the event was never written down;
+ * - check and claim as separate steps, and two concurrent copies of the same
+ *   replay both look new.
+ *
+ * **Claiming the `uuid` is not "processed".** It records only that the event is
+ * safely written down. Inserting the `uuid` on its own is not enough: store the
+ * event with it. Do the business work afterwards, reading it back from the
+ * stored row and retrying from there. If that work throws, the row is still
+ * there to retry, so the delivery is not lost even though the provider's next
+ * redelivery is correctly reported a duplicate.
  *
  * ```ts
- * const recordDelivery = async (uuid: string) => {
+ * const claimAndStore = async (event: UnknownWebhookEvent) => {
  *   const inserted = await db
- *     .insertInto('respondent_webhook_delivery')
- *     .values({ uuid })
+ *     .insertInto('respondent_webhook_inbox')
+ *     .values({ uuid: event.uuid, payload: JSON.stringify(event) })
  *     .onConflict((c) => c.column('uuid').doNothing())
  *     .executeTakeFirst()
- *   return inserted.numInsertedOrUpdatedRows === 1n
+ *   return inserted.numInsertedOrUpdatedRows === 1n ? 'stored' : 'duplicate'
  * }
  * ```
  */
-export type WebhookDeliveryRecorder = (
-  uuid: string,
-) => boolean | Promise<boolean>
+export type WebhookDeliveryStore = (
+  event: UnknownWebhookEvent,
+) => WebhookDeliveryClaim | Promise<WebhookDeliveryClaim>
 
 /**
  * What {@link verifyAndDedupeWebhook} decided about a delivery.
  */
 export type WebhookDeliveryOutcome =
   | {
-      /** Signature verified, body parsed, and the `uuid` had not been seen. */
-      status: 'accepted'
+      /**
+       * Signature verified, body parsed, and `claimAndStore` reported that it
+       * stored this event. It is written down, not processed.
+       */
+      status: 'stored'
       uuid: string
       /**
-       * The delivery body. Narrow it to a known event with
-       * `WebhookEvent.safeParse(outcome.event)`.
+       * The delivery body, exactly as it was handed to `claimAndStore`. Narrow
+       * it to a known event with `WebhookEvent.safeParse(outcome.event)`.
        */
       event: UnknownWebhookEvent
     }
   | { status: 'invalid_signature' }
   | { status: 'malformed_body'; cause: unknown }
   | {
-      /** The signature was valid but this `uuid` was already processed. */
+      /** The signature was valid but this `uuid` was already stored. */
       status: 'duplicate'
       uuid: string
     }
@@ -525,24 +551,42 @@ const decodeRawBody = (rawBody: string | Uint8Array): string =>
 
 export type VerifyAndDedupeWebhookOptions =
   VerifyWebhookSignatureFromRawBodyOptions & {
-    /** Atomically record the delivery `uuid`; see {@link WebhookDeliveryRecorder}. */
-    recordDelivery: WebhookDeliveryRecorder
+    /**
+     * Atomically store the event and claim its `uuid`; see
+     * {@link WebhookDeliveryStore}.
+     */
+    claimAndStore: WebhookDeliveryStore
   }
 
 /**
- * Verify a delivery, parse it, and reject replays in one step.
+ * Verify a delivery, parse it, hand it to your store, and reject replays.
  *
  * HMAC proves the delivery came from someone holding the `privateKey`; it does
  * not prove the delivery is fresh. The provider sends no timestamp header, and
  * retries up to five times, so a captured delivery stays valid forever unless
- * you record what you have already processed. `recordDelivery` is where you do
- * that — atomically — and the outcome tells you whether to act on the event.
+ * you record what you have already taken in.
+ *
+ * The handler this is built for has four steps, in this order:
+ *
+ * 1. verify the raw bytes;
+ * 2. store the event and claim its `uuid` atomically — that is
+ *    `claimAndStore`;
+ * 3. answer 2xx;
+ * 4. process the work from the stored row, with its own retries, and mark that
+ *    row processed when it succeeds.
+ *
+ * Doing the business work before answering, or instead of storing, is what this
+ * function is designed to stop. A `uuid` claimed for work that then throws is a
+ * delivery the provider will retry and you will discard.
+ *
+ * An error thrown by `claimAndStore` propagates out of this call: nothing was
+ * claimed and nothing was stored, so answer non-2xx and let the provider retry.
  *
  * Verification uses the raw wire bytes; see
  * {@link verifyWebhookSignatureFromRawBody} for why that choice is not settled.
  */
 export const verifyAndDedupeWebhook = async ({
-  recordDelivery,
+  claimAndStore,
   ...options
 }: VerifyAndDedupeWebhookOptions): Promise<WebhookDeliveryOutcome> => {
   if (!verifyWebhookSignatureFromRawBody(options)) {
@@ -562,9 +606,9 @@ export const verifyAndDedupeWebhook = async ({
   }
 
   const { uuid } = parsed.data
-  if (!(await recordDelivery(uuid))) {
+  if ((await claimAndStore(parsed.data)) === 'duplicate') {
     return { status: 'duplicate', uuid }
   }
 
-  return { status: 'accepted', uuid, event: parsed.data }
+  return { status: 'stored', uuid, event: parsed.data }
 }
